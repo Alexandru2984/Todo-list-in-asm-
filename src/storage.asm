@@ -11,6 +11,7 @@ global complete_todo
 global delete_todo
 global get_todo_list
 global get_todo_count
+global clear_done_todos
 
 section .data
     todos_prefix db "data/todos-", 0
@@ -516,5 +517,44 @@ get_todo_list:
 
 get_todo_count:
     mov rax, [todo_count]
+    ret
+
+; -----------------------------------------------------------------------------
+; clear_done_todos - append delete records for all completed todos, then reload
+; -----------------------------------------------------------------------------
+clear_done_todos:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+
+    mov rbx, todos
+    mov r12, 1000
+
+.loop:
+    mov rax, [rbx]      ; id
+    test rax, rax
+    jz .next
+
+    mov cl, [rbx+8]
+    cmp cl, 1           ; only completed (not already deleted)
+    jne .next
+
+    mov rdi, [rbx]      ; id
+    mov rsi, 2          ; mark deleted
+    mov rdx, [rbx+9]    ; timestamp (unaligned read ok on x86-64)
+    lea rcx, [rbx+17]   ; title ptr
+    call format_and_append  ; writes to file, does NOT call load_todos
+
+.next:
+    add rbx, 128
+    dec r12
+    jnz .loop
+
+    call load_todos     ; single reload after all deletes
+
+    pop r12
+    pop rbx
+    pop rbp
     ret
 

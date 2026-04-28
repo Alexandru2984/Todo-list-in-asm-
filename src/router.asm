@@ -10,6 +10,7 @@ extern complete_todo
 extern delete_todo
 extern get_todo_list
 extern load_todos
+extern clear_done_todos
 
 global handle_request
 global current_uid
@@ -65,14 +66,22 @@ section .data
                   db "</div>", 10
                   db "<ul id='tl'>", 10, 0
 
-    html_footer db "</ul></div>", 10
-                db "<script>", 10
-                db "function fmtDate(ts){if(!ts)return '';return new Date(ts*1000).toLocaleString();}", 10
-                db "function filter(t,btn){document.querySelectorAll('.fi button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');document.querySelectorAll('#tl li').forEach(function(li){if(t==='all')li.style.display='';else if(t==='active')li.style.display=li.dataset.done==='0'?'':'none';else li.style.display=li.dataset.done==='1'?'':'none';});}", 10
-                db "function stats(){var items=document.querySelectorAll('#tl li');var n=0;items.forEach(function(li){if(li.dataset.done==='1')n++;});var el=document.getElementById('stats');if(el)el.textContent=items.length+' task'+(items.length!==1?'s':'')+', '+n+' done';}", 10
-                db "window.onload=function(){document.querySelectorAll('#tl li .ts').forEach(function(el){var ts=parseInt(el.closest('li').dataset.ts);el.textContent=fmtDate(ts);});stats();document.querySelectorAll('.fi button').forEach(function(b){b.onclick=function(){filter(b.getAttribute('data-f'),b);};});};", 10
-                db "</script>", 10
-                db "</body></html>", 10, 0
+    html_footer_1 db "</ul>", 10, 0
+
+    html_footer_2 db "</div>", 10
+                  db "<script>", 10
+                  db "function fmtDate(ts){if(!ts)return '';return new Date(ts*1000).toLocaleString();}", 10
+                  db "function filter(t,btn){document.querySelectorAll('.fi button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');document.querySelectorAll('#tl li').forEach(function(li){if(t==='all')li.style.display='';else if(t==='active')li.style.display=li.dataset.done==='0'?'':'none';else li.style.display=li.dataset.done==='1'?'':'none';});}", 10
+                  db "function stats(){var items=document.querySelectorAll('#tl li');var n=0;items.forEach(function(li){if(li.dataset.done==='1')n++;});var el=document.getElementById('stats');if(el)el.textContent=items.length+' task'+(items.length!==1?'s':'')+', '+n+' done';}", 10
+                  db "window.onload=function(){", 10
+                  db "document.querySelectorAll('#tl li .ts').forEach(function(el){var ts=parseInt(el.closest('li').dataset.ts);el.textContent=fmtDate(ts);});", 10
+                  db "stats();", 10
+                  db "document.querySelectorAll('.fi button').forEach(function(b){b.onclick=function(){filter(b.getAttribute('data-f'),b);};});", 10
+                  db "var hasDone=Array.from(document.querySelectorAll('#tl li')).some(function(li){return li.dataset.done==='1';});", 10
+                  db "var cdf=document.getElementById('cdf');if(cdf&&hasDone)cdf.style.display='block';", 10
+                  db "};", 10
+                  db "</script>", 10
+                  db "</body></html>", 10, 0
 
     li_active_1 db "<li data-ts='", 0
     li_active_2 db "' data-done='0'><div class='ti'><span class='tt'>", 0
@@ -90,6 +99,10 @@ section .data
     post_add db "POST /add ", 0
     post_complete db "POST /complete ", 0
     post_delete db "POST /delete ", 0
+    post_clear_done db "POST /clear-done ", 0
+
+    html_clear_done_open db "<form method='POST' action='/clear-done' id='cdf' style='display:none;margin-bottom:1rem'><input type='hidden' name='uid' value='", 0
+    html_clear_done_close db "'><button class='bx' style='width:100%'>&#10003; Clear done</button></form>", 10, 0
 
     rnrn db 13, 10, 13, 10, 0
 
@@ -154,6 +167,13 @@ handle_request:
     test rax, rax
     jz .do_post_delete
 
+    mov rdi, rbx
+    mov rsi, post_clear_done
+    mov rdx, 17
+    call strncmp
+    test rax, rax
+    jz .do_post_clear_done
+
     ; 404
     mov rdi, http_404
     call strlen
@@ -181,8 +201,7 @@ handle_request:
     call extract_body
     test rax, rax
     jz .redirect
-    mov r13, rax        ; save body ptr
-    ; extract uid from body
+    mov r13, rax
     mov rdi, r13
     call find_uid
     test rax, rax
@@ -192,13 +211,15 @@ handle_request:
     cmp byte [current_uid], 0
     je .redirect
     call load_todos
-    ; look for title=
     mov rdi, r13
     call find_title
     test rax, rax
     jz .redirect
     mov rdi, rax
     call url_decode
+    ; skip empty title
+    cmp byte [rax], 0
+    je .redirect
     mov rdi, rax
     call append_todo
     jmp .redirect
@@ -249,6 +270,23 @@ handle_request:
     call atoi
     mov rdi, rax
     call delete_todo
+    jmp .redirect
+
+.do_post_clear_done:
+    call extract_body
+    test rax, rax
+    jz .redirect
+    mov r13, rax
+    mov rdi, r13
+    call find_uid
+    test rax, rax
+    jz .redirect
+    mov rdi, rax
+    call copy_uid
+    cmp byte [current_uid], 0
+    je .redirect
+    call load_todos
+    call clear_done_todos
     jmp .redirect
 
 .redirect:
@@ -356,26 +394,122 @@ find_id:
     xor rax, rax
     ret
 
-; In-place URL decode (+ to space, ignore % for simplicity or do basic replace)
+; In-place URL decode: handles +, %XX, stops at & or \0
+; rdi = ptr to value; rax = same ptr (decoded in-place)
 url_decode:
-    mov rsi, rdi
-    mov rax, rdi
+    mov rsi, rdi    ; read ptr
+    ; rdi = write ptr (same start)
+    mov rax, rdi    ; return value
 .loop:
     mov cl, [rsi]
     test cl, cl
-    jz .done
+    jz .end
+    cmp cl, '&'
+    je .end
     cmp cl, '+'
-    jne .check_pct
-    mov byte [rsi], ' '
-    jmp .next
-.check_pct:
-    cmp cl, '&' ; End of param
-    je .end_param
-.next:
+    je .plus
+    cmp cl, '%'
+    je .pct
+    mov [rdi], cl
+    inc rsi
+    inc rdi
+    jmp .loop
+.plus:
+    mov byte [rdi], ' '
+    inc rsi
+    inc rdi
+    jmp .loop
+.pct:
+    inc rsi
+    movzx ecx, byte [rsi]
+    test cl, cl
+    jz .end
+    call hex_nibble
+    shl cl, 4
+    mov r9b, cl
+    inc rsi
+    movzx ecx, byte [rsi]
+    test cl, cl
+    jz .end
+    call hex_nibble
+    and cl, 0x0F
+    or cl, r9b
+    mov [rdi], cl
+    inc rsi
+    inc rdi
+    jmp .loop
+.end:
+    mov byte [rdi], 0
+    ret
+
+; cl = hex char ('0'-'9','a'-'f','A'-'F') → nibble in cl
+hex_nibble:
+    cmp cl, 'a'
+    jb .not_lower
+    sub cl, 87      ; 'a'(97) - 10 = 87
+    ret
+.not_lower:
+    cmp cl, 'A'
+    jb .is_digit
+    sub cl, 55      ; 'A'(65) - 10 = 55
+    ret
+.is_digit:
+    sub cl, '0'
+    ret
+
+; strcpy_html_escape: copy from rsi to rdi, escaping <>&" as HTML entities
+; updates rdi; clobbers al, rsi
+strcpy_html_escape:
+.loop:
+    mov al, [rsi]
+    test al, al
+    jz .done
+    cmp al, '<'
+    je .lt
+    cmp al, '>'
+    je .gt
+    cmp al, '&'
+    je .amp
+    cmp al, '"'
+    je .quot
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .loop
+.lt:
+    mov byte [rdi],   '&'
+    mov byte [rdi+1], 'l'
+    mov byte [rdi+2], 't'
+    mov byte [rdi+3], ';'
+    add rdi, 4
     inc rsi
     jmp .loop
-.end_param:
-    mov byte [rsi], 0
+.gt:
+    mov byte [rdi],   '&'
+    mov byte [rdi+1], 'g'
+    mov byte [rdi+2], 't'
+    mov byte [rdi+3], ';'
+    add rdi, 4
+    inc rsi
+    jmp .loop
+.amp:
+    mov byte [rdi],   '&'
+    mov byte [rdi+1], 'a'
+    mov byte [rdi+2], 'm'
+    mov byte [rdi+3], 'p'
+    mov byte [rdi+4], ';'
+    add rdi, 5
+    inc rsi
+    jmp .loop
+.quot:
+    mov byte [rdi],   '&'
+    mov byte [rdi+1], '#'
+    mov byte [rdi+2], '3'
+    mov byte [rdi+3], '4'
+    mov byte [rdi+4], ';'
+    add rdi, 5
+    inc rsi
+    jmp .loop
 .done:
     ret
 
@@ -455,7 +589,7 @@ send_html:
 .emit_title:
     mov rsi, rbx
     add rsi, 17
-    call strcpy_fwd
+    call strcpy_html_escape
 
     mov rsi, li_mid
     call strcpy_fwd
@@ -507,7 +641,18 @@ send_html:
     dec r13
     jnz .todo_loop
 
-    mov rsi, html_footer
+    ; Close the <ul>, then clear-done form (inside .wrap), then close wrap + script
+    mov rsi, html_footer_1
+    call strcpy_fwd
+
+    mov rsi, html_clear_done_open
+    call strcpy_fwd
+    mov rsi, current_uid
+    call strcpy_fwd
+    mov rsi, html_clear_done_close
+    call strcpy_fwd
+
+    mov rsi, html_footer_2
     call strcpy_fwd
 
     mov rsi, res_buf
