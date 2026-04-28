@@ -210,16 +210,15 @@ load_todos:
     mov [rbx+8], r15b ; completed
     mov [rbx+9], r9 ; timestamp
     
-    ; copy title
+    ; copy title (use r10 directly to avoid clobbering rsi = file_buf base)
     mov rdi, rbx
     add rdi, 17
-    mov rsi, r10
 .copy_title:
-    mov al, [rsi]
+    mov al, [r10]
     mov [rdi], al
     test al, al
     jz .title_done
-    inc rsi
+    inc r10
     inc rdi
     jmp .copy_title
 .title_done:
@@ -261,7 +260,8 @@ append_todo_file:
     push rbp
     mov rbp, rsp
     push rbx
-    
+    push r12
+
     mov rbx, rdi
     mov rax, SYS_OPEN
     mov rdi, filename

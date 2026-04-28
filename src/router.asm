@@ -107,10 +107,12 @@ handle_request:
     jz .do_post_delete
 
     ; 404
+    mov rdi, http_404
+    call strlen
+    mov rdx, rax
     mov rax, SYS_WRITE
     mov rdi, r12
     mov rsi, http_404
-    mov rdx, 58 ; approx
     syscall
     jmp .done
 
@@ -265,7 +267,9 @@ url_decode:
 send_html:
     push rbp
     mov rbp, rsp
-    
+    push rbx
+    push r13
+
     ; We'll build response in res_buf to avoid many small syscalls
     mov rdi, res_buf
     
