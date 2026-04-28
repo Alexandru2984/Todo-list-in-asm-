@@ -21,7 +21,7 @@ section .data
         dd 0            ; sin_addr (INADDR_ANY)
         dq 0            ; sin_zero
 
-    current_port dq 8081
+    current_port dq 34624
 
 section .bss
     sock_fd resq 1
