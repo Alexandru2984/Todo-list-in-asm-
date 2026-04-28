@@ -44,6 +44,21 @@ htons:
 ; main entry point
 ; -----------------------------------------------------------------------------
 _start:
+    ; Ignore SIGPIPE — prevents crash when client closes connection mid-write
+    sub rsp, 40
+    mov qword [rsp],    1   ; sa_handler = SIG_IGN
+    mov qword [rsp+8],  0   ; sa_flags
+    mov qword [rsp+16], 0   ; sa_restorer
+    mov qword [rsp+24], 0   ; sa_mask lo
+    mov qword [rsp+32], 0   ; sa_mask hi
+    mov rax, 13             ; SYS_RT_SIGACTION
+    mov rdi, 13             ; SIGPIPE
+    mov rsi, rsp
+    xor rdx, rdx
+    mov r10, 8              ; sigsetsize
+    syscall
+    add rsp, 40
+
     ; Print startup
     mov rdi, msg_starting
     call print
@@ -134,6 +149,19 @@ _start:
     mov rdi, [client_fd]
     mov rsi, 1              ; SOL_SOCKET
     mov rdx, 20             ; SO_RCVTIMEO
+    mov r10, rsp
+    mov r8, 16
+    syscall
+    add rsp, 16
+
+    ; Set 10s send timeout — prevents slow-write DoS
+    sub rsp, 16
+    mov qword [rsp], 10     ; tv_sec
+    mov qword [rsp+8], 0    ; tv_usec
+    mov rax, 54
+    mov rdi, [client_fd]
+    mov rsi, 1              ; SOL_SOCKET
+    mov rdx, 21             ; SO_SNDTIMEO
     mov r10, rsp
     mov r8, 16
     syscall

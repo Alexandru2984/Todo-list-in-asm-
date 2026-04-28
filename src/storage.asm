@@ -25,7 +25,7 @@ section .bss
     ; [9-16] timestamp (qword, unaligned)
     ; [17-127] title (null-terminated)
     todos resb 128000
-    file_buf resb 65536
+    file_buf resb 262144    ; 256KB — fits 1000 slots × multiple operations
     todo_count resq 1
     current_time resq 1
     todo_path resb 128
@@ -119,11 +119,11 @@ load_todos:
     jl .done
     mov rbx, rax ; fd
 
-    ; Read into file_buf
+    ; Read into file_buf (up to 256KB)
     mov rax, SYS_READ
     mov rdi, rbx
     mov rsi, file_buf
-    mov rdx, 65536
+    mov rdx, 262144
     syscall
     mov r12, rax ; bytes read
 
@@ -454,6 +454,10 @@ complete_todo:
     mov rbp, rsp
     push rbx
     mov rbx, rdi
+
+    ; reject id=0 (would match empty array slots)
+    test rbx, rbx
+    jz .done
     
     ; find title from memory
     mov rcx, 1000
@@ -488,6 +492,10 @@ delete_todo:
     mov rbp, rsp
     push rbx
     mov rbx, rdi
+
+    ; reject id=0 (would match empty array slots)
+    test rbx, rbx
+    jz .done
     
     ; find title
     mov rcx, 1000

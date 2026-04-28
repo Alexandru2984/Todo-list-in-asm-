@@ -107,7 +107,7 @@ section .data
     rnrn db 13, 10, 13, 10, 0
 
 section .bss
-    res_buf resb 65536
+    res_buf resb 1572864    ; 1.5MB — covers 1000 todos × 1200 bytes + overhead
     id_str resb 32
     current_uid resb 64
 
