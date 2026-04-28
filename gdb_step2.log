@@ -1,0 +1,109 @@
+Breakpoint 1 at 0x4017e3: file src/storage.asm, line 303.
+Starting ASM TODO server...
+Listening on port: 8087
+Received request
+
+Breakpoint 1, format_and_append () at src/storage.asm:303
+303	    push rbp
+304	    mov rbp, rsp
+1: x/i $pc
+=> 0x4017e4 <format_and_append+1>:	mov    %rsp,%rbp
+305	    push rbx
+1: x/i $pc
+=> 0x4017e7 <format_and_append+4>:	push   %rbx
+306	    push r12
+1: x/i $pc
+=> 0x4017e8 <format_and_append+5>:	push   %r12
+307	    push r13
+1: x/i $pc
+=> 0x4017ea <format_and_append+7>:	push   %r13
+308	    push r14
+1: x/i $pc
+=> 0x4017ec <format_and_append+9>:	push   %r14
+309	    push r15
+1: x/i $pc
+=> 0x4017ee <format_and_append+11>:	push   %r15
+311	    mov r12, rdi ; id
+1: x/i $pc
+=> 0x4017f0 <format_and_append+13>:	mov    %rdi,%r12
+312	    mov r13, rsi ; completed
+1: x/i $pc
+=> 0x4017f3 <format_and_append+16>:	mov    %rsi,%r13
+313	    mov r14, rdx ; timestamp
+1: x/i $pc
+=> 0x4017f6 <format_and_append+19>:	mov    %rdx,%r14
+314	    mov r15, rcx ; title
+1: x/i $pc
+=> 0x4017f9 <format_and_append+22>:	mov    %rcx,%r15
+316	    mov rdi, r12
+1: x/i $pc
+=> 0x4017fc <format_and_append+25>:	mov    %r12,%rdi
+317	    mov rsi, line_buf
+1: x/i $pc
+=> 0x4017ff <format_and_append+28>:	movabs $0x442a28,%rsi
+318	    call itoa
+1: x/i $pc
+=> 0x401809 <format_and_append+38>:	call   0x4019bb <itoa>
+321	    mov rdi, line_buf
+1: x/i $pc
+=> 0x40180e <format_and_append+43>:	movabs $0x442a28,%rdi
+322	    call strlen
+1: x/i $pc
+=> 0x401818 <format_and_append+53>:	call   0x401990 <strlen>
+323	    mov rbx, line_buf
+1: x/i $pc
+=> 0x40181d <format_and_append+58>:	movabs $0x442a28,%rbx
+324	    add rbx, rax
+1: x/i $pc
+=> 0x401827 <format_and_append+68>:	add    %rax,%rbx
+325	    mov byte [rbx], '|'
+1: x/i $pc
+=> 0x40182a <format_and_append+71>:	movb   $0x7c,(%rbx)
+326	    inc rbx
+1: x/i $pc
+=> 0x40182d <format_and_append+74>:	inc    %rbx
+328	    mov rdi, r13
+1: x/i $pc
+=> 0x401830 <format_and_append+77>:	mov    %r13,%rdi
+329	    mov rsi, rbx
+1: x/i $pc
+=> 0x401833 <format_and_append+80>:	mov    %rbx,%rsi
+330	    call itoa
+1: x/i $pc
+=> 0x401836 <format_and_append+83>:	call   0x4019bb <itoa>
+331	    mov rdi, rbx
+1: x/i $pc
+=> 0x40183b <format_and_append+88>:	mov    %rbx,%rdi
+332	    call strlen
+1: x/i $pc
+=> 0x40183e <format_and_append+91>:	call   0x401990 <strlen>
+333	    add rbx, rax
+1: x/i $pc
+=> 0x401843 <format_and_append+96>:	add    %rax,%rbx
+334	    mov byte [rbx], '|'
+1: x/i $pc
+=> 0x401846 <format_and_append+99>:	movb   $0x7c,(%rbx)
+335	    inc rbx
+1: x/i $pc
+=> 0x401849 <format_and_append+102>:	inc    %rbx
+337	    mov rdi, r14
+1: x/i $pc
+=> 0x40184c <format_and_append+105>:	mov    %r14,%rdi
+338	    mov rsi, rbx
+1: x/i $pc
+=> 0x40184f <format_and_append+108>:	mov    %rbx,%rsi
+339	    call itoa
+1: x/i $pc
+=> 0x401852 <format_and_append+111>:	call   0x4019bb <itoa>
+340	    mov rdi, rbx
+1: x/i $pc
+=> 0x401857 <format_and_append+116>:	mov    %rbx,%rdi
+341	    call strlen
+1: x/i $pc
+=> 0x40185a <format_and_append+119>:	call   0x401990 <strlen>
+342	    add rbx, rax
+1: x/i $pc
+=> 0x40185f <format_and_append+124>:	add    %rax,%rbx
+343	    mov byte [rbx], '|'
+1: x/i $pc
+=> 0x401862 <format_and_append+127>:	movb   $0x7c,(%rbx)

@@ -1,0 +1,18 @@
+Breakpoint 1 at 0x4011e0: file src/router.asm, line 71.
+Breakpoint 2 at 0x40189c: file src/storage.asm, line 373.
+Breakpoint 3 at 0x40158c: file src/storage.asm, line 52.
+Starting ASM TODO server...
+
+Breakpoint 3, load_todos () at src/storage.asm:52
+52	    push rbp
+Listening on port: 8087
+Received request
+
+Breakpoint 1, handle_request () at src/router.asm:71
+71	    push rbp
+
+Breakpoint 2, append_todo () at src/storage.asm:373
+373	    push rbp
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()

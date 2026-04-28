@@ -1,0 +1,8 @@
+Starting ASM TODO server...
+Listening on port: 8087
+Received request
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+#0  0x0000000000000000 in ?? ()
+#1  0x0000000000000000 in ?? ()

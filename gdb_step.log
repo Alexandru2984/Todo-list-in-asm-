@@ -1,0 +1,68 @@
+Breakpoint 1 at 0x40189c: file src/storage.asm, line 373.
+Starting ASM TODO server...
+Listening on port: 8087
+Received request
+
+Breakpoint 1, append_todo () at src/storage.asm:373
+373	    push rbp
+374	    mov rbp, rsp
+1: x/i $pc
+=> 0x40189d <append_todo+1>:	mov    %rsp,%rbp
+375	    push rbx
+1: x/i $pc
+=> 0x4018a0 <append_todo+4>:	push   %rbx
+377	    mov rbx, rdi ; title
+1: x/i $pc
+=> 0x4018a1 <append_todo+5>:	mov    %rdi,%rbx
+380	    mov rax, SYS_TIME
+1: x/i $pc
+=> 0x4018a4 <append_todo+8>:	mov    $0xc9,%eax
+381	    mov rdi, current_time
+1: x/i $pc
+=> 0x4018a9 <append_todo+13>:	movabs $0x442a20,%rdi
+382	    syscall
+1: x/i $pc
+=> 0x4018b3 <append_todo+23>:	syscall
+383	    mov rdx, [current_time]
+1: x/i $pc
+=> 0x4018b5 <append_todo+25>:	mov    0x442a20,%rdx
+385	    mov rdi, [next_id]
+1: x/i $pc
+=> 0x4018bd <append_todo+33>:	mov    0x4025cf,%rdi
+386	    mov rsi, 0
+1: x/i $pc
+=> 0x4018c5 <append_todo+41>:	mov    $0x0,%esi
+387	    mov rcx, rbx
+1: x/i $pc
+=> 0x4018ca <append_todo+46>:	mov    %rbx,%rcx
+388	    call format_and_append
+1: x/i $pc
+=> 0x4018cd <append_todo+49>:	call   0x4017e3 <format_and_append>
+format_and_append () at src/storage.asm:303
+303	    push rbp
+1: x/i $pc
+=> 0x4017e3 <format_and_append>:	push   %rbp
+304	    mov rbp, rsp
+1: x/i $pc
+=> 0x4017e4 <format_and_append+1>:	mov    %rsp,%rbp
+305	    push rbx
+1: x/i $pc
+=> 0x4017e7 <format_and_append+4>:	push   %rbx
+306	    push r12
+1: x/i $pc
+=> 0x4017e8 <format_and_append+5>:	push   %r12
+307	    push r13
+1: x/i $pc
+=> 0x4017ea <format_and_append+7>:	push   %r13
+308	    push r14
+1: x/i $pc
+=> 0x4017ec <format_and_append+9>:	push   %r14
+309	    push r15
+1: x/i $pc
+=> 0x4017ee <format_and_append+11>:	push   %r15
+311	    mov r12, rdi ; id
+1: x/i $pc
+=> 0x4017f0 <format_and_append+13>:	mov    %rdi,%r12
+312	    mov r13, rsi ; completed
+1: x/i $pc
+=> 0x4017f3 <format_and_append+16>:	mov    %rsi,%r13
