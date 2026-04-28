@@ -2,6 +2,7 @@
 
 extern atoi
 extern strlen
+extern current_uid      ; defined in router.asm (global resb 64)
 
 global init_storage
 global load_todos
@@ -12,41 +13,78 @@ global get_todo_list
 global get_todo_count
 
 section .data
-    filename db "data/todos.txt", 0
+    todos_prefix db "data/todos-", 0
+    todos_suffix db ".txt", 0
     next_id dq 1
 
 section .bss
     ; 1000 tasks, each 128 bytes
-    ; [0-7] id
-    ; [8] completed (0, 1, or 2 for deleted)
-    ; [9-16] timestamp
-    ; [17-127] title
+    ; [0-7] id (qword)
+    ; [8] completed (0=active, 1=done, 2=deleted)
+    ; [9-16] timestamp (qword, unaligned)
+    ; [17-127] title (null-terminated)
     todos resb 128000
     file_buf resb 65536
     todo_count resq 1
     current_time resq 1
+    todo_path resb 128
 
 section .text
 
 ; -----------------------------------------------------------------------------
-; init_storage - Ensure data/todos.txt exists
+; build_path - builds "data/todos-{uid}.txt" into todo_path
+; Returns rax=1 if path built, rax=0 if current_uid is empty
+; Clobbers: rdi, rsi, al
 ; -----------------------------------------------------------------------------
-init_storage:
-    mov rax, SYS_OPEN
-    mov rdi, filename
-    mov rsi, O_CREAT | O_RDWR | O_APPEND
-    mov rdx, 0644o
-    syscall
-    cmp rax, 0
-    jl .error
-    mov rdi, rax
-    mov rax, SYS_CLOSE
-    syscall
-.error:
+build_path:
+    cmp byte [current_uid], 0
+    je .empty
+    mov rdi, todo_path
+    mov rsi, todos_prefix
+.cp1:
+    mov al, [rsi]
+    test al, al
+    jz .cp2
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .cp1
+.cp2:
+    mov rsi, current_uid
+.cp3:
+    mov al, [rsi]
+    test al, al
+    jz .cp4
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .cp3
+.cp4:
+    mov rsi, todos_suffix
+.cp5:
+    mov al, [rsi]
+    mov [rdi], al   ; copies null terminator too
+    test al, al
+    jz .ok
+    inc rsi
+    inc rdi
+    jmp .cp5
+.ok:
+    mov rax, 1
+    ret
+.empty:
+    xor rax, rax
     ret
 
 ; -----------------------------------------------------------------------------
-; load_todos - Read file and populate array
+; init_storage - no-op (data/ directory created by Makefile)
+; -----------------------------------------------------------------------------
+init_storage:
+    ret
+
+; -----------------------------------------------------------------------------
+; load_todos - Read user's file and populate todos array
+; Always zeroes array first; does nothing more if current_uid is empty
 ; -----------------------------------------------------------------------------
 load_todos:
     push rbp
@@ -56,7 +94,8 @@ load_todos:
     push r13
     push r14
     push r15
-    ; Clear todos
+
+    ; Always clear todos array first (prevents cross-user data leaks)
     mov rdi, todos
     mov rcx, 128000
     xor al, al
@@ -64,9 +103,14 @@ load_todos:
     mov qword [todo_count], 0
     mov qword [next_id], 1
 
-    ; Open file
+    ; Build path — bail out early if no uid
+    call build_path
+    test rax, rax
+    jz .done
+
+    ; Open todo_path
     mov rax, SYS_OPEN
-    mov rdi, filename
+    mov rdi, todo_path
     mov rsi, O_RDONLY
     mov rdx, 0
     syscall
@@ -262,11 +306,16 @@ append_todo_file:
     push rbx
     push r12
 
-    mov rbx, rdi
+    mov rbx, rdi    ; save string ptr before build_path clobbers rdi
+
+    call build_path
+    test rax, rax
+    jz .done        ; no uid — refuse to write
+
     mov rax, SYS_OPEN
-    mov rdi, filename
-    mov rsi, O_WRONLY | O_APPEND
-    mov rdx, 0
+    mov rdi, todo_path
+    mov rsi, O_WRONLY | O_APPEND | O_CREAT
+    mov rdx, 0644o
     syscall
     cmp rax, 0
     jl .done
