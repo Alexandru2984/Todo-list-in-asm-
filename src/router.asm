@@ -220,7 +220,21 @@ handle_request:
     ; skip empty title
     cmp byte [rax], 0
     je .redirect
+    ; truncate title to max 110 chars (line_buf 512, slot 111 bytes)
+    push rax
     mov rdi, rax
+    mov ecx, 111
+.scan_title:
+    dec ecx
+    jz .trunc_title
+    cmp byte [rdi], 0
+    jz .do_append
+    inc rdi
+    jmp .scan_title
+.trunc_title:
+    mov byte [rdi], 0
+.do_append:
+    pop rdi
     call append_todo
     jmp .redirect
 

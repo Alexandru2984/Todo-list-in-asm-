@@ -126,6 +126,19 @@ _start:
     jl .accept_loop
     mov [client_fd], rax
 
+    ; Set 5s receive timeout — prevents slow-read DoS
+    sub rsp, 16
+    mov qword [rsp], 5      ; tv_sec
+    mov qword [rsp+8], 0    ; tv_usec
+    mov rax, 54             ; SYS_SETSOCKOPT
+    mov rdi, [client_fd]
+    mov rsi, 1              ; SOL_SOCKET
+    mov rdx, 20             ; SO_RCVTIMEO
+    mov r10, rsp
+    mov r8, 16
+    syscall
+    add rsp, 16
+
     ; Read request
     mov rax, SYS_READ
     mov rdi, [client_fd]

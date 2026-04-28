@@ -258,15 +258,20 @@ load_todos:
     ; copy title (use r10 directly to avoid clobbering rsi = file_buf base)
     mov rdi, rbx
     add rdi, 17
+    mov ecx, 110
 .copy_title:
     mov al, [r10]
-    mov [rdi], al
     test al, al
     jz .title_done
+    test ecx, ecx
+    jz .title_done
+    mov [rdi], al
     inc r10
     inc rdi
+    dec ecx
     jmp .copy_title
 .title_done:
+    mov byte [rdi], 0
 
     ; update next_id
     mov rax, r8
@@ -316,7 +321,7 @@ append_todo_file:
     mov rax, SYS_OPEN
     mov rdi, todo_path
     mov rsi, O_WRONLY | O_APPEND | O_CREAT
-    mov rdx, 0644o
+    mov rdx, 0600o
     syscall
     cmp rax, 0
     jl .done
