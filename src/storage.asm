@@ -2,6 +2,7 @@
 
 extern atoi
 extern strlen
+extern write_all
 extern current_uid      ; defined in router.asm (global resb 64)
 
 global init_storage
@@ -29,6 +30,7 @@ section .bss
     todo_count resq 1
     current_time resq 1
     todo_path resb 128
+    tmp_path resb 136
 
 section .text
 
@@ -354,7 +356,9 @@ section .text
 extern itoa
 
 ; rdi = id, rsi = completed, rdx = timestamp, rcx = title
-format_and_append:
+; Formats "id|completed|timestamp|title\n" into line_buf
+; Returns rax = line length (incl. newline, excl. null)
+format_line:
     push rbp
     mov rbp, rsp
     push rbx
@@ -411,12 +415,100 @@ format_and_append:
 .done_copy:
     mov byte [rbx], 10
     mov byte [rbx+1], 0
-
-    mov rdi, line_buf
-    call append_todo_file
+    lea rax, [rbx+1]
+    sub rax, line_buf
 
     pop r15
     pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+; rdi = id, rsi = completed, rdx = timestamp, rcx = title
+format_and_append:
+    push rbp
+    mov rbp, rsp
+    call format_line
+    mov rdi, line_buf
+    call append_todo_file
+    pop rbp
+    ret
+
+; -----------------------------------------------------------------------------
+; compact_todos - rewrite user's file from in-memory state, dropping deleted
+; records and superseded duplicates. Writes to todo_path + ".tmp" then
+; renames over the original, so a crash mid-write never loses the file.
+; Bounds append-log growth under the 256KB load cap.
+; -----------------------------------------------------------------------------
+compact_todos:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+
+    call build_path
+    test rax, rax
+    jz .done
+
+    ; tmp_path = todo_path + ".tmp"
+    mov rsi, todo_path
+    mov rdi, tmp_path
+.cp:
+    mov al, [rsi]
+    test al, al
+    jz .suffix
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .cp
+.suffix:
+    mov dword [rdi], '.tmp'
+    mov byte [rdi+4], 0
+
+    mov rax, SYS_OPEN
+    mov rdi, tmp_path
+    mov rsi, O_WRONLY | O_CREAT | O_TRUNC
+    mov rdx, 0600o
+    syscall
+    cmp rax, 0
+    jl .done
+    mov r12, rax ; fd
+
+    mov rbx, todos
+    mov r13, 1000
+.loop:
+    mov rax, [rbx]
+    test rax, rax
+    jz .next
+    cmp byte [rbx+8], 2 ; skip deleted
+    je .next
+    mov rdi, [rbx]
+    movzx rsi, byte [rbx+8]
+    mov rdx, [rbx+9]
+    lea rcx, [rbx+17]
+    call format_line
+    mov rdx, rax
+    mov rdi, r12
+    mov rsi, line_buf
+    call write_all
+.next:
+    add rbx, 128
+    dec r13
+    jnz .loop
+
+    mov rax, SYS_CLOSE
+    mov rdi, r12
+    syscall
+
+    mov rax, SYS_RENAME
+    mov rdi, tmp_path
+    mov rsi, todo_path
+    syscall
+
+.done:
     pop r13
     pop r12
     pop rbx
@@ -480,6 +572,8 @@ complete_todo:
     mov rsi, r8
     call format_and_append
     call load_todos
+    call compact_todos
+    call load_todos
 
 .done:
     pop rbx
@@ -517,6 +611,8 @@ delete_todo:
     mov rcx, rsi
     mov rsi, r8
     call format_and_append
+    call load_todos
+    call compact_todos
     call load_todos
 
 .done:
@@ -565,6 +661,8 @@ clear_done_todos:
     jnz .loop
 
     call load_todos     ; single reload after all deletes
+    call compact_todos
+    call load_todos
 
     pop r12
     pop rbx

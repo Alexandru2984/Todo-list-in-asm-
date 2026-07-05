@@ -15,6 +15,7 @@
 %define SYS_EXIT    60
 %define SYS_TIME    201
 %define SYS_MKDIR   83
+%define SYS_RENAME  82
 
 ; File operations
 %define O_RDONLY    0
