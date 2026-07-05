@@ -118,6 +118,20 @@ get_content_length:
 ; main entry point
 ; -----------------------------------------------------------------------------
 _start:
+    ; Optional start port from argv[1]; keeps the default when absent
+    ; or out of range. At entry: [rsp]=argc, [rsp+16]=argv[1].
+    mov rax, [rsp]
+    cmp rax, 2
+    jl .no_port_arg
+    mov rdi, [rsp+16]
+    call atoi
+    test rax, rax
+    jz .no_port_arg
+    cmp rax, 65535
+    ja .no_port_arg
+    mov [current_port], rax
+.no_port_arg:
+
     ; Ignore SIGPIPE — prevents crash when client closes connection mid-write
     sub rsp, 40
     mov qword [rsp],    1   ; sa_handler = SIG_IGN
