@@ -409,6 +409,7 @@ find_id:
     ret
 
 ; In-place URL decode: handles +, %XX, stops at & or \0
+; Strips \n (0x0A), \r (0x0D), | (0x7C) — prevents file format injection
 ; rdi = ptr to value; rax = same ptr (decoded in-place)
 url_decode:
     mov rsi, rdi    ; read ptr
@@ -424,9 +425,19 @@ url_decode:
     je .plus
     cmp cl, '%'
     je .pct
+    ; strip file-format-breaking chars from raw input
+    cmp cl, 0x0A    ; LF
+    je .skip_raw
+    cmp cl, 0x0D    ; CR
+    je .skip_raw
+    cmp cl, '|'     ; file field separator
+    je .skip_raw
     mov [rdi], cl
     inc rsi
     inc rdi
+    jmp .loop
+.skip_raw:
+    inc rsi
     jmp .loop
 .plus:
     mov byte [rdi], ' '
@@ -448,9 +459,19 @@ url_decode:
     call hex_nibble
     and cl, 0x0F
     or cl, r9b
+    ; strip decoded control chars and file separator
+    cmp cl, 0x0A    ; LF
+    je .pct_skip
+    cmp cl, 0x0D    ; CR
+    je .pct_skip
+    cmp cl, '|'     ; file field separator
+    je .pct_skip
     mov [rdi], cl
     inc rsi
     inc rdi
+    jmp .loop
+.pct_skip:
+    inc rsi         ; advance past 2nd hex digit, don't write
     jmp .loop
 .end:
     mov byte [rdi], 0
