@@ -7,6 +7,7 @@ global atoi
 global strcmp
 global strncmp
 global find_char
+global write_all
 
 section .text
 
@@ -171,6 +172,32 @@ strncmp:
     movsx rax, al
     ret
 .equal:
+    xor rax, rax
+    ret
+
+; -----------------------------------------------------------------------------
+; write_all - Write entire buffer to fd, handling partial writes and EINTR
+; rdi: fd
+; rsi: buffer
+; rdx: length
+; Returns: rax = 0 on success, negative errno on failure
+; -----------------------------------------------------------------------------
+write_all:
+.loop:
+    test rdx, rdx
+    jz .ok
+    mov rax, SYS_WRITE
+    syscall
+    cmp rax, 0
+    jg .advance
+    cmp rax, -4         ; -EINTR: retry
+    je .loop
+    ret                 ; 0 or other error: give up, return errno
+.advance:
+    add rsi, rax
+    sub rdx, rax
+    jmp .loop
+.ok:
     xor rax, rax
     ret
 

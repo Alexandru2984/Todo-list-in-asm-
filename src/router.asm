@@ -3,6 +3,7 @@
 extern strlen
 extern strncmp
 extern print
+extern write_all
 extern itoa
 extern atoi
 extern append_todo
@@ -178,10 +179,9 @@ handle_request:
     mov rdi, http_404
     call strlen
     mov rdx, rax
-    mov rax, SYS_WRITE
     mov rdi, r12
     mov rsi, http_404
-    syscall
+    call write_all
     jmp .done
 
 .do_get_root:
@@ -324,9 +324,8 @@ handle_request:
     mov rsi, res_buf
     mov rdx, rdi
     sub rdx, res_buf
-    mov rax, SYS_WRITE
     mov rdi, r12
-    syscall
+    call write_all
     jmp .done
 
 .done:
@@ -693,10 +692,8 @@ send_html:
     mov rsi, res_buf
     mov rdx, rdi
     sub rdx, res_buf
-
-    mov rax, SYS_WRITE
     mov rdi, r12
-    syscall
+    call write_all
 
     pop r13
     pop rbx
