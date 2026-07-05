@@ -1,62 +1,70 @@
 # ASM TODO Server
 
-A lightweight, high-performance TODO list application written entirely in **x86_64 Assembly** for Linux. It features a built-in HTTP server, a modern dark-mode web interface, and file-based persistence.
+A multi-user TODO list web application written entirely in **x86_64 Assembly** for Linux — no libc, no frameworks, just NASM and raw syscalls. It ships a forking HTTP server, a dark-mode web UI, and crash-safe per-user file persistence.
+
+![CI](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/workflows/ci.yml/badge.svg)
 
 ## Features
 
-- **Built from Scratch:** No external libraries or high-level languages. Pure NASM and Linux system calls.
-- **HTTP Server:** Implements a basic TCP/HTTP stack for handling web requests.
-- **Modern UI:** Responsive dark-mode interface served directly from assembly.
-- **CRUD Operations:**
-    - View all tasks.
-    - Add new tasks.
-    - Mark tasks as completed.
-    - Delete tasks.
-- **Persistence:** Automatically saves and loads tasks from `data/todos.txt`.
-- **Port Discovery:** Starts at port `8081` and automatically finds the next available port if it's in use.
-
-## Architecture
-
-- `src/main.asm`: Entry point, socket initialization, and request loop.
-- `src/router.asm`: HTTP routing, HTML generation, and request parsing.
-- `src/storage.asm`: Task management and file I/O logic.
-- `src/utils.asm`: String manipulation and conversion utilities (`itoa`, `atoi`, `strlen`, etc.).
-- `src/defs.inc`: System call numbers and common constants.
+- **Built from scratch:** pure NASM + Linux syscalls; the binary links with `ld` alone.
+- **Concurrent HTTP server:** `fork()` per connection — one slow client can't stall the rest. Children are auto-reaped via `SIGCHLD` ignore.
+- **Real request parsing:** reads until headers complete and the `Content-Length` body has fully arrived, so split-packet POSTs work; responses are delivered through a partial-write-safe loop.
+- **Proper HTTP responses:** `Content-Length` on every response, `405 Method Not Allowed` for wrong methods, and security headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`).
+- **Multi-user:** each browser gets a random 32-hex-char uid (generated client-side, validated server-side) with its own task file.
+- **CRUD + extras:** add, complete, edit (✎), delete, and clear-done — with timestamps, task counter, and All/Active/Done filters.
+- **Crash-safe persistence:** operations append to `data/todos-{uid}.txt`, then the log is compacted by writing a temp file and `rename()`-ing it over the original. Concurrent children serialize via `flock` on a per-user lock file.
+- **Hardened:** HTML-escaped output (XSS), URL decoding with CR/LF/`|` stripping (storage-format injection), strict hex uid validation (path traversal), `atoi` overflow guard, receive/send socket timeouts, title length caps.
 
 ## Requirements
 
-- **OS:** Linux (x86_64)
-- **Assembler:** [NASM](https://nasm.us/)
-- **Linker:** `ld` (GNU Binutils)
-- **Build Tool:** `make`
+- Linux x86_64
+- [NASM](https://nasm.us/), `ld` (binutils), `make`
+- `curl` and `netcat` for the smoke tests
 
-## Getting Started
+## Getting started
 
-### 1. Build the project
 ```bash
-make
+make            # build → bin/server
+make run        # build + start
+./bin/server 8080   # optional: choose the start port
 ```
 
-### 2. Run the server
+The server prints the port it listens on (default `34624`; if busy, it scans upward). Open `http://localhost:<port>` — the UI assigns your uid automatically and keeps it in `localStorage`.
+
+## Testing
+
 ```bash
-make run
-```
-The server will start and display the port it is listening on (default: `8081`).
-
-### 3. Access the Web UI
-Open your browser and navigate to:
-```
-http://localhost:8081
+make && ./tests/smoke.sh
 ```
 
-## Development
+Twenty end-to-end checks over real HTTP: routing, header correctness, CRUD with on-disk assertions, XSS/injection/traversal hardening, split-packet POST delivery, and parallel-write integrity. The same suite runs in GitHub Actions on every push.
 
-- **Build only:** `make all`
-- **Clean build artifacts:** `make clean`
-- **Project Structure:**
-    - `bin/`: Compiled executable.
-    - `data/`: Persistent storage.
-    - `src/`: Assembly source files.
+## Architecture
+
+| File | Role |
+|---|---|
+| `src/main.asm` | entry point, signals, sockets, fork-per-connection accept loop, request reading |
+| `src/router.asm` | routing, form parsing, URL decoding, HTML escaping/rendering, HTTP responses |
+| `src/storage.asm` | task array, append-log persistence, compaction, per-user `flock` |
+| `src/utils.asm` | `strlen`, `itoa`, `atoi`, `strncmp`, `write_all`, … |
+| `src/defs.inc` | syscall numbers, constants, macros |
+
+### Storage format
+
+One record per line in `data/todos-{uid}.txt`:
+
+```
+id|status|timestamp|title        # status: 0=active, 1=done
+```
+
+Mutations append a superseding record (crash-safe), then the file is rewritten compacted via temp-file + atomic `rename()`. On load, records replay in order, so the last write for an id wins.
+
+## Limitations (by design, it's assembly)
+
+- The uid in the URL is the only access control — treat it as a capability token, don't host anything sensitive.
+- Max 1000 tasks per user, titles capped at 110 characters, requests at 4 KB.
+- HTTP/1.0-style `Connection: close` on every request; no TLS (put it behind a reverse proxy if exposed).
 
 ## License
-MIT
+
+[MIT](LICENSE)
