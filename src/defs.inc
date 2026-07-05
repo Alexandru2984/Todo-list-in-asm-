@@ -16,6 +16,16 @@
 %define SYS_TIME    201
 %define SYS_MKDIR   83
 %define SYS_RENAME  82
+%define SYS_FLOCK   73
+
+; flock operations
+%define LOCK_SH     1
+%define LOCK_EX     2
+%define LOCK_UN     8
+
+; Signals
+%define SIGPIPE     13
+%define SIGCHLD     17
 
 ; File operations
 %define O_RDONLY    0

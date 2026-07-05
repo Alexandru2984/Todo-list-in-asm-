@@ -126,10 +126,18 @@ _start:
     mov qword [rsp+24], 0   ; sa_mask lo
     mov qword [rsp+32], 0   ; sa_mask hi
     mov rax, 13             ; SYS_RT_SIGACTION
-    mov rdi, 13             ; SIGPIPE
+    mov rdi, SIGPIPE
     mov rsi, rsp
     xor rdx, rdx
     mov r10, 8              ; sigsetsize
+    syscall
+
+    ; Ignore SIGCHLD — kernel auto-reaps forked children, no zombies
+    mov rax, 13             ; SYS_RT_SIGACTION
+    mov rdi, SIGCHLD
+    mov rsi, rsp            ; same sigaction struct (SIG_IGN)
+    xor rdx, rdx
+    mov r10, 8
     syscall
     add rsp, 40
 
@@ -215,6 +223,24 @@ _start:
     jl .accept_loop
     mov [client_fd], rax
 
+    ; Fork: child handles this connection, parent keeps accepting.
+    ; One slow client can no longer block everyone else.
+    mov rax, SYS_FORK
+    syscall
+    test rax, rax
+    jz .child
+    ; Parent (or fork failure): close our copy of the client fd
+    mov rax, SYS_CLOSE
+    mov rdi, [client_fd]
+    syscall
+    jmp .accept_loop
+
+.child:
+    ; Child: close inherited listening socket, serve one request, exit
+    mov rax, SYS_CLOSE
+    mov rdi, [sock_fd]
+    syscall
+
     ; Set 5s receive timeout — prevents slow-read DoS
     sub rsp, 16
     mov qword [rsp], 5      ; tv_sec
@@ -294,12 +320,14 @@ _start:
     call handle_request
 
 .close_client:
-    ; Close client
+    ; Close client and exit the child process
     mov rax, SYS_CLOSE
     mov rdi, [client_fd]
     syscall
-    
-    jmp .accept_loop
+
+    mov rax, SYS_EXIT
+    xor rdi, rdi
+    syscall
 
 .try_next_port:
     ; Close failed socket

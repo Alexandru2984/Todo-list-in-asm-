@@ -12,6 +12,8 @@ extern delete_todo
 extern get_todo_list
 extern load_todos
 extern clear_done_todos
+extern lock_user_file
+extern unlock_user_file
 
 global handle_request
 global current_uid
@@ -193,7 +195,9 @@ handle_request:
     mov rdi, rax
     call copy_uid
 .get_load:
+    call lock_user_file
     call load_todos
+    call unlock_user_file
     call send_html
     jmp .done
 
@@ -210,16 +214,17 @@ handle_request:
     call copy_uid
     cmp byte [current_uid], 0
     je .redirect
+    call lock_user_file
     call load_todos
     mov rdi, r13
     call find_title
     test rax, rax
-    jz .redirect
+    jz .redirect_unlock
     mov rdi, rax
     call url_decode
     ; skip empty title
     cmp byte [rax], 0
-    je .redirect
+    je .redirect_unlock
     ; truncate title to max 110 chars (line_buf 512, slot 111 bytes)
     push rax
     mov rdi, rax
@@ -236,7 +241,7 @@ handle_request:
 .do_append:
     pop rdi
     call append_todo
-    jmp .redirect
+    jmp .redirect_unlock
 
 .do_post_complete:
     call extract_body
@@ -251,16 +256,17 @@ handle_request:
     call copy_uid
     cmp byte [current_uid], 0
     je .redirect
+    call lock_user_file
     call load_todos
     mov rdi, r13
     call find_id
     test rax, rax
-    jz .redirect
+    jz .redirect_unlock
     mov rdi, rax
     call atoi
     mov rdi, rax
     call complete_todo
-    jmp .redirect
+    jmp .redirect_unlock
 
 .do_post_delete:
     call extract_body
@@ -275,16 +281,17 @@ handle_request:
     call copy_uid
     cmp byte [current_uid], 0
     je .redirect
+    call lock_user_file
     call load_todos
     mov rdi, r13
     call find_id
     test rax, rax
-    jz .redirect
+    jz .redirect_unlock
     mov rdi, rax
     call atoi
     mov rdi, rax
     call delete_todo
-    jmp .redirect
+    jmp .redirect_unlock
 
 .do_post_clear_done:
     call extract_body
@@ -299,10 +306,13 @@ handle_request:
     call copy_uid
     cmp byte [current_uid], 0
     je .redirect
+    call lock_user_file
     call load_todos
     call clear_done_todos
-    jmp .redirect
+    jmp .redirect_unlock
 
+.redirect_unlock:
+    call unlock_user_file
 .redirect:
     ; Build "HTTP/1.1 303 See Other\r\nLocation: /?uid={uid}\r\n\r\n" in res_buf
     mov rdi, res_buf

@@ -13,6 +13,8 @@ global delete_todo
 global get_todo_list
 global get_todo_count
 global clear_done_todos
+global lock_user_file
+global unlock_user_file
 
 section .data
     todos_prefix db "data/todos-", 0
@@ -31,6 +33,8 @@ section .bss
     current_time resq 1
     todo_path resb 128
     tmp_path resb 136
+    lock_path resb 136
+    lock_fd resq 1
 
 section .text
 
@@ -618,6 +622,63 @@ delete_todo:
 .done:
     pop rbx
     pop rbp
+    ret
+
+; -----------------------------------------------------------------------------
+; lock_user_file - take an exclusive flock on data/todos-{uid}.txt.lock
+; Serializes load/append/compact for one user across forked children.
+; The lock file is never renamed (compaction replaces the data file's
+; inode, which would break flock on it), so its inode is stable.
+; No-op when current_uid is empty.
+; -----------------------------------------------------------------------------
+lock_user_file:
+    mov qword [lock_fd], -1
+    call build_path
+    test rax, rax
+    jz .done
+
+    ; lock_path = todo_path + ".lock"
+    mov rsi, todo_path
+    mov rdi, lock_path
+.cp:
+    mov al, [rsi]
+    test al, al
+    jz .sfx
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .cp
+.sfx:
+    mov dword [rdi], '.loc'
+    mov word [rdi+4], 'k'   ; writes 'k', 0
+
+    mov rax, SYS_OPEN
+    mov rdi, lock_path
+    mov rsi, O_CREAT | O_RDWR
+    mov rdx, 0600o
+    syscall
+    cmp rax, 0
+    jl .done
+    mov [lock_fd], rax
+
+    mov rdi, rax
+    mov rax, SYS_FLOCK
+    mov rsi, LOCK_EX
+    syscall
+.done:
+    ret
+
+; -----------------------------------------------------------------------------
+; unlock_user_file - release the per-user lock (close drops the flock)
+; -----------------------------------------------------------------------------
+unlock_user_file:
+    mov rdi, [lock_fd]
+    cmp rdi, 0
+    jl .done
+    mov rax, SYS_CLOSE
+    syscall
+    mov qword [lock_fd], -1
+.done:
     ret
 
 get_todo_list:
