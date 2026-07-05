@@ -109,6 +109,11 @@ atoi:
     cmp cl, '9'
     jg .done
 
+    ; overflow guard: stop before rax*10+9 can exceed INT64_MAX
+    mov r11, 922337203685477580
+    cmp rax, r11
+    jae .done
+
     sub cl, '0'
     imul rax, 10
     add rax, rcx
