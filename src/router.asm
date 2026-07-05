@@ -9,6 +9,7 @@ extern atoi
 extern append_todo
 extern complete_todo
 extern delete_todo
+extern edit_todo
 extern get_todo_list
 extern load_todos
 extern clear_done_todos
@@ -61,6 +62,8 @@ section .data
                   db ".bd:hover{background:#2ea043}", 10
                   db ".bx{padding:.3rem .5rem;background:#da3633;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.875rem}", 10
                   db ".bx:hover{background:#f85149}", 10
+                  db ".be{padding:.3rem .5rem;background:#1f6feb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.875rem}", 10
+                  db ".be:hover{background:#388bfd}", 10
                   db "</style>", 10
                   db "<script>(function(){var p=new URLSearchParams(window.location.search);var u=p.get('uid');if(!u){u=localStorage.getItem('asm_uid');if(!u){u=crypto.randomUUID().replace(/-/g,'');localStorage.setItem('asm_uid',u);}window.location.replace('/?uid='+u);}else{localStorage.setItem('asm_uid',u);}})();</script>", 10
                   db "</head><body><div class='wrap'>", 10
@@ -83,6 +86,7 @@ section .data
 
     html_footer_2 db "</div>", 10
                   db "<script>", 10
+                  db "function ed(b){var f=b.form;var t=prompt('Edit task',f.closest('li').querySelector('.tt').textContent);if(t!==null&&t.trim()!==''){f.elements['title'].value=t;f.submit();}}", 10
                   db "function fmtDate(ts){if(!ts)return '';return new Date(ts*1000).toLocaleString();}", 10
                   db "function filter(t,btn){document.querySelectorAll('.fi button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');document.querySelectorAll('#tl li').forEach(function(li){if(t==='all')li.style.display='';else if(t==='active')li.style.display=li.dataset.done==='0'?'':'none';else li.style.display=li.dataset.done==='1'?'':'none';});}", 10
                   db "function stats(){var items=document.querySelectorAll('#tl li');var n=0;items.forEach(function(li){if(li.dataset.done==='1')n++;});var el=document.getElementById('stats');if(el)el.textContent=items.length+' task'+(items.length!==1?'s':'')+', '+n+' done';}", 10
@@ -104,20 +108,24 @@ section .data
 
     form_complete_open db "<form method='POST' action='/complete'><input type='hidden' name='uid' value='", 0
     form_delete_open   db "<form method='POST' action='/delete'><input type='hidden' name='uid' value='", 0
+    form_edit_open     db "<form method='POST' action='/edit'><input type='hidden' name='uid' value='", 0
     form_uid_id_bridge db "'><input type='hidden' name='id' value='", 0
     form_complete_2    db "'><button class='bd'>&#10003;</button></form>", 0
     form_delete_2      db "'><button class='bx'>&#10007;</button></form></div></li>", 10, 0
+    form_edit_2        db "'><input type='hidden' name='title'><button class='be' type='button' onclick='ed(this)'>&#9998;</button></form>", 0
 
     get_root db "GET /", 0
     post_add db "POST /add ", 0
     post_complete db "POST /complete ", 0
     post_delete db "POST /delete ", 0
     post_clear_done db "POST /clear-done ", 0
+    post_edit db "POST /edit ", 0
 
     get_add db "GET /add ", 0
     get_complete db "GET /complete ", 0
     get_delete db "GET /delete ", 0
     get_clear_done db "GET /clear-done ", 0
+    get_edit db "GET /edit ", 0
 
     html_clear_done_open db "<form method='POST' action='/clear-done' id='cdf' style='display:none;margin-bottom:1rem'><input type='hidden' name='uid' value='", 0
     html_clear_done_close db "'><button class='bx' style='width:100%'>&#10003; Clear done</button></form>", 10, 0
@@ -125,7 +133,7 @@ section .data
     rnrn db 13, 10, 13, 10, 0
 
 section .bss
-    res_buf resb 1572864    ; 1.5MB — covers 1000 todos × 1200 bytes + overhead
+    res_buf resb 2097152    ; 2MB — covers 1000 todos × ~1400 bytes (3 action forms) + overhead
     hdr_buf resb 256
     id_str resb 32
     current_uid resb 64
@@ -193,6 +201,13 @@ handle_request:
     test rax, rax
     jz .do_post_clear_done
 
+    mov rdi, rbx
+    mov rsi, post_edit
+    mov rdx, 11
+    call strncmp
+    test rax, rax
+    jz .do_post_edit
+
     ; GET on a POST-only endpoint → 405 with Allow: POST
     mov rdi, rbx
     mov rsi, get_add
@@ -215,6 +230,12 @@ handle_request:
     mov rdi, rbx
     mov rsi, get_clear_done
     mov rdx, 16
+    call strncmp
+    test rax, rax
+    jz .method_not_allowed
+    mov rdi, rbx
+    mov rsi, get_edit
+    mov rdx, 10
     call strncmp
     test rax, rax
     jz .method_not_allowed
@@ -342,6 +363,58 @@ handle_request:
     call atoi
     mov rdi, rax
     call delete_todo
+    jmp .redirect_unlock
+
+.do_post_edit:
+    call extract_body
+    test rax, rax
+    jz .redirect
+    mov r13, rax
+    mov rdi, r13
+    call find_uid
+    test rax, rax
+    jz .redirect
+    mov rdi, rax
+    call copy_uid
+    cmp byte [current_uid], 0
+    je .redirect
+    call lock_user_file
+    call load_todos
+    mov rdi, r13
+    call find_id
+    test rax, rax
+    jz .redirect_unlock
+    mov rdi, rax
+    call atoi
+    push rax                ; id
+    mov rdi, r13
+    call find_title
+    test rax, rax
+    jz .redirect_unlock_pop
+    mov rdi, rax
+    call url_decode
+    cmp byte [rax], 0
+    je .redirect_unlock_pop
+    ; truncate title to max 110 chars (same limit as /add)
+    push rax
+    mov rdi, rax
+    mov ecx, 111
+.scan_etitle:
+    dec ecx
+    jz .trunc_etitle
+    cmp byte [rdi], 0
+    jz .do_edit
+    inc rdi
+    jmp .scan_etitle
+.trunc_etitle:
+    mov byte [rdi], 0
+.do_edit:
+    pop rsi                 ; title
+    pop rdi                 ; id
+    call edit_todo
+    jmp .redirect_unlock
+.redirect_unlock_pop:
+    pop rax
     jmp .redirect_unlock
 
 .do_post_clear_done:
@@ -678,6 +751,25 @@ send_html:
     call strcpy_html_escape
 
     mov rsi, li_mid
+    call strcpy_fwd
+
+    ; Edit button (all visible items)
+    mov rsi, form_edit_open
+    call strcpy_fwd
+    mov rsi, current_uid
+    call strcpy_fwd
+    mov rsi, form_uid_id_bridge
+    call strcpy_fwd
+
+    push rdi
+    mov rdi, [rbx]
+    mov rsi, id_str
+    call itoa
+    pop rdi
+    mov rsi, id_str
+    call strcpy_fwd
+
+    mov rsi, form_edit_2
     call strcpy_fwd
 
     ; Complete button (active items only)

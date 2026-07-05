@@ -10,6 +10,7 @@ global load_todos
 global append_todo
 global complete_todo
 global delete_todo
+global edit_todo
 global get_todo_list
 global get_todo_count
 global clear_done_todos
@@ -679,6 +680,51 @@ unlock_user_file:
     syscall
     mov qword [lock_fd], -1
 .done:
+    ret
+
+; -----------------------------------------------------------------------------
+; edit_todo - replace a todo's title, keeping id/status/timestamp
+; rdi = id, rsi = new title (already decoded and truncated)
+; -----------------------------------------------------------------------------
+edit_todo:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    mov rbx, rdi
+    mov r12, rsi
+
+    ; reject id=0 (would match empty array slots)
+    test rbx, rbx
+    jz .done
+
+    mov rcx, 1000
+    mov rsi, todos
+.find:
+    mov rax, [rsi]
+    cmp rax, rbx
+    je .found
+    add rsi, 128
+    dec rcx
+    jnz .find
+    jmp .done
+
+.found:
+    cmp byte [rsi+8], 2 ; deleted records can't be edited
+    je .done
+    mov rdi, rbx            ; id
+    mov rdx, [rsi+9]        ; keep timestamp
+    movzx rsi, byte [rsi+8] ; keep completed status
+    mov rcx, r12            ; new title
+    call format_and_append
+    call load_todos
+    call compact_todos
+    call load_todos
+
+.done:
+    pop r12
+    pop rbx
+    pop rbp
     ret
 
 get_todo_list:
