@@ -1,6 +1,8 @@
 bin/
 *.o
 logs/
-data/*.txt
+data/
 *.core
 core
+*.log
+debug_*.sh
