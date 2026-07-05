@@ -5,6 +5,7 @@ extern load_todos
 extern handle_request
 extern print
 extern itoa
+extern atoi
 extern strlen
 
 global _start
@@ -14,6 +15,7 @@ section .data
     msg_port db "Listening on port: ", 0
     msg_nl db 10, 0
     msg_req db "Received request", 10, 0
+    cl_lit db "content-length:", 0
     
     sockaddr:
         dw AF_INET      ; sin_family
@@ -38,6 +40,78 @@ section .text
 htons:
     mov rax, rdi
     xchg al, ah
+    ret
+
+; -----------------------------------------------------------------------------
+; find_hdr_end - find "\r\n\r\n" in null-terminated buffer
+; rdi = buffer
+; Returns rax = ptr past the terminator, or 0 if not found
+; -----------------------------------------------------------------------------
+find_hdr_end:
+    mov rsi, rdi
+.loop:
+    cmp byte [rsi], 0
+    je .not_found
+    cmp dword [rsi], 0x0a0d0a0d
+    je .found
+    inc rsi
+    jmp .loop
+.found:
+    lea rax, [rsi+4]
+    ret
+.not_found:
+    xor rax, rax
+    ret
+
+; -----------------------------------------------------------------------------
+; get_content_length - parse "Content-Length:" header, case-insensitive
+; rdi = request buffer (null-terminated); scan stops at end of headers
+; Returns rax = declared body length, or 0 if header absent
+; -----------------------------------------------------------------------------
+get_content_length:
+    push rbx
+    mov rsi, rdi
+.scan:
+    cmp byte [rsi], 0
+    je .absent
+    cmp dword [rsi], 0x0a0d0a0d     ; reached end of headers
+    je .absent
+    xor rcx, rcx
+.cmp_loop:
+    cmp rcx, 15
+    je .matched
+    mov al, [rsi + rcx]
+    test al, al
+    jz .absent
+    cmp al, 'A'                     ; lowercase A-Z before comparing
+    jb .low_done
+    cmp al, 'Z'
+    ja .low_done
+    add al, 32
+.low_done:
+    mov rbx, cl_lit
+    cmp al, [rbx + rcx]
+    jne .next
+    inc rcx
+    jmp .cmp_loop
+.next:
+    inc rsi
+    jmp .scan
+.matched:
+    add rsi, 15
+.skip_sp:
+    cmp byte [rsi], ' '
+    jne .parse
+    inc rsi
+    jmp .skip_sp
+.parse:
+    mov rdi, rsi
+    call atoi
+    pop rbx
+    ret
+.absent:
+    xor rax, rax
+    pop rbx
     ret
 
 ; -----------------------------------------------------------------------------
@@ -167,18 +241,48 @@ _start:
     syscall
     add rsp, 16
 
-    ; Read request
+    ; Read request: loop until headers complete + Content-Length body received.
+    ; A browser/proxy may deliver headers and body in separate packets; a
+    ; single read() would silently drop the body.
+    xor r13, r13            ; total bytes received
+.read_loop:
+    mov rdx, 4095
+    sub rdx, r13            ; remaining buffer space
+    jz .read_complete       ; buffer full — process what we have
     mov rax, SYS_READ
     mov rdi, [client_fd]
-    mov rsi, req_buf
-    mov rdx, 4095
+    lea rsi, [req_buf + r13]
     syscall
-    
     cmp rax, 0
-    jle .close_client
+    jle .read_eof
+    add r13, rax
+    mov byte [req_buf + r13], 0
 
-    ; Null-terminate buffer
-    mov byte [req_buf + rax], 0
+    ; Headers complete? (need \r\n\r\n)
+    mov rdi, req_buf
+    call find_hdr_end
+    test rax, rax
+    jz .read_loop           ; still inside headers
+    mov r14, rax            ; ptr past \r\n\r\n = body start
+
+    ; Body received so far
+    lea rax, [req_buf + r13]
+    sub rax, r14            ; body bytes present
+    mov r15, rax
+
+    ; Need Content-Length more?
+    mov rdi, req_buf
+    call get_content_length ; rax = declared body length (0 if absent)
+    cmp r15, rax
+    jl .read_loop           ; body incomplete — keep reading
+    jmp .read_complete
+
+.read_eof:
+    test r13, r13
+    jz .close_client        ; nothing received at all
+
+.read_complete:
+    mov byte [req_buf + r13], 0
 
     ; Print request log
     mov rdi, msg_req
