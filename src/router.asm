@@ -19,9 +19,19 @@ global handle_request
 global current_uid
 
 section .data
-    http_200 db "HTTP/1.1 200 OK", 13, 10, "Content-Type: text/html", 13, 10, "Connection: close", 13, 10, 13, 10, 0
+    ; Referrer-Policy keeps the uid (capability token in the URL) out of
+    ; outbound Referer headers; no-store keeps it out of shared caches.
+    http_200_pre db "HTTP/1.1 200 OK", 13, 10
+                 db "Content-Type: text/html; charset=utf-8", 13, 10
+                 db "Cache-Control: no-store", 13, 10
+                 db "X-Content-Type-Options: nosniff", 13, 10
+                 db "Referrer-Policy: no-referrer", 13, 10
+                 db "Content-Length: ", 0
+    http_200_post db 13, 10, "Connection: close", 13, 10, 13, 10, 0
     http_303_prefix db "HTTP/1.1 303 See Other", 13, 10, "Location: /?uid=", 0
-    http_404 db "HTTP/1.1 404 Not Found", 13, 10, "Content-Length: 9", 13, 10, "Connection: close", 13, 10, 13, 10, "Not Found", 0
+    http_303_tail db 13, 10, "Content-Length: 0", 13, 10, 13, 10, 0
+    http_404 db "HTTP/1.1 404 Not Found", 13, 10, "Content-Length: 9", 13, 10, "X-Content-Type-Options: nosniff", 13, 10, "Connection: close", 13, 10, 13, 10, "Not Found", 0
+    http_405 db "HTTP/1.1 405 Method Not Allowed", 13, 10, "Allow: POST", 13, 10, "Content-Length: 18", 13, 10, "Connection: close", 13, 10, 13, 10, "Method Not Allowed", 0
 
     html_header_1 db "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>", 10
                   db "<meta name='viewport' content='width=device-width,initial-scale=1'>", 10
@@ -104,6 +114,11 @@ section .data
     post_delete db "POST /delete ", 0
     post_clear_done db "POST /clear-done ", 0
 
+    get_add db "GET /add ", 0
+    get_complete db "GET /complete ", 0
+    get_delete db "GET /delete ", 0
+    get_clear_done db "GET /clear-done ", 0
+
     html_clear_done_open db "<form method='POST' action='/clear-done' id='cdf' style='display:none;margin-bottom:1rem'><input type='hidden' name='uid' value='", 0
     html_clear_done_close db "'><button class='bx' style='width:100%'>&#10003; Clear done</button></form>", 10, 0
 
@@ -111,6 +126,7 @@ section .data
 
 section .bss
     res_buf resb 1572864    ; 1.5MB — covers 1000 todos × 1200 bytes + overhead
+    hdr_buf resb 256
     id_str resb 32
     current_uid resb 64
 
@@ -177,12 +193,47 @@ handle_request:
     test rax, rax
     jz .do_post_clear_done
 
+    ; GET on a POST-only endpoint → 405 with Allow: POST
+    mov rdi, rbx
+    mov rsi, get_add
+    mov rdx, 9
+    call strncmp
+    test rax, rax
+    jz .method_not_allowed
+    mov rdi, rbx
+    mov rsi, get_complete
+    mov rdx, 14
+    call strncmp
+    test rax, rax
+    jz .method_not_allowed
+    mov rdi, rbx
+    mov rsi, get_delete
+    mov rdx, 12
+    call strncmp
+    test rax, rax
+    jz .method_not_allowed
+    mov rdi, rbx
+    mov rsi, get_clear_done
+    mov rdx, 16
+    call strncmp
+    test rax, rax
+    jz .method_not_allowed
+
     ; 404
     mov rdi, http_404
     call strlen
     mov rdx, rax
     mov rdi, r12
     mov rsi, http_404
+    call write_all
+    jmp .done
+
+.method_not_allowed:
+    mov rdi, http_405
+    call strlen
+    mov rdx, rax
+    mov rdi, r12
+    mov rsi, http_405
     call write_all
     jmp .done
 
@@ -321,15 +372,8 @@ handle_request:
     ; append current_uid (may be empty string — that's fine, redirect to /?uid=)
     mov rsi, current_uid
     call strcpy_fwd
-    ; append \r\n\r\n
-    mov byte [rdi], 13
-    inc rdi
-    mov byte [rdi], 10
-    inc rdi
-    mov byte [rdi], 13
-    inc rdi
-    mov byte [rdi], 10
-    inc rdi
+    mov rsi, http_303_tail
+    call strcpy_fwd
 
     mov rsi, res_buf
     mov rdx, rdi
@@ -564,11 +608,9 @@ send_html:
     push rbx
     push r13
 
-    ; Build response in res_buf
+    ; Build response body in res_buf (headers sent separately once the
+    ; body length is known, so Content-Length can be emitted)
     mov rdi, res_buf
-
-    mov rsi, http_200
-    call strcpy_fwd
 
     ; Header part 1 (CSS + uid-check script + form open + hidden uid field open)
     mov rsi, html_header_1
@@ -699,9 +741,28 @@ send_html:
     mov rsi, html_footer_2
     call strcpy_fwd
 
-    mov rsi, res_buf
+    mov r13, rdi
+    sub r13, res_buf        ; body length
+
+    ; Build status line + headers with Content-Length
+    mov rdi, hdr_buf
+    mov rsi, http_200_pre
+    call strcpy_fwd
+    mov rsi, rdi            ; itoa target = current header end
+    mov rdi, r13
+    call itoa               ; rsi unchanged, rax = digit count
+    lea rdi, [rsi + rax]
+    mov rsi, http_200_post
+    call strcpy_fwd
+
     mov rdx, rdi
-    sub rdx, res_buf
+    sub rdx, hdr_buf
+    mov rsi, hdr_buf
+    mov rdi, r12
+    call write_all
+
+    mov rsi, res_buf
+    mov rdx, r13
     mov rdi, r12
     call write_all
 
