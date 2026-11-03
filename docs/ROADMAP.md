@@ -2,6 +2,8 @@
 
 ## Release 1 — foundation and usable product
 
+Delivered on 2026-11-03. See [release verification](RELEASE.md) for checks and limits.
+
 1. Strict bounded HTTP parsing, absolute deadlines and predictable binding.
 2. Transactional, synced storage with explicit capacity and disk errors.
 3. Anonymous server-generated sessions; preserve legacy task lists through migration.

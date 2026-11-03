@@ -18,9 +18,10 @@
 
 ## Validation before deployment
 
-- 30 protocol/storage/security checks, including the absolute 15-second child
+- 31 protocol/storage/security checks, including the absolute 15-second child
   deadline, 40 concurrent writes, 1000-slot capacity, maximum escaped render,
-  restart persistence, failed writes, corrupt files and symlink refusal.
+  restart persistence, failed writes, corrupt files, symlink refusal and the
+  maximum representable task-ID boundary.
 - Three backup round-trip/integrity/path-safety checks.
 - Proxy-normalized lowercase response headers covered by a deployment-probe
   regression check. A real rollout automatically reverted on the original
@@ -33,7 +34,28 @@
   dedicated identity and syscall allowlist, using isolated state/a spare port.
 - Existing production listener and original data remained untouched during tests.
 
-Production deployment and post-deployment results are recorded after rollout.
+## Production verification
+
+The release is live at https://asm.micutu.com/.
+
+- Localhost and public HTTPS probes passed session creation, private-page policy
+  and the full create/complete/reopen/edit/delete lifecycle on fresh probe lists.
+- Public Chromium checks passed mobile/desktop task actions, the final mobile
+  heading/input sizes, and zero JavaScript/CSP errors. Cloudflare's automatic
+  analytics/challenge script injection is suppressed using `no-transform`;
+  the app's own external script remains allowed by the restrictive CSP.
+- Original task-file hashes matched the pre-deployment snapshot byte-for-byte.
+  Probe lists were removed; no original workspace was used for testing.
+- The service runs as `asm-todo`, with no effective Linux capabilities, seccomp
+  active, NoNewPrivileges, 32-task/96-MiB caps and a loopback-only listener.
+- Daily backup timer is enabled. The backup service completed successfully;
+  SHA-256 verification and an isolated restore/server lifecycle drill passed.
+- Nginx configuration passed validation and was gracefully reloaded. Cloudflare
+  tunnel configuration and unrelated services were not changed.
+- Commits use the repository owner's existing name/email with no coauthor lines.
+  GitHub Actions has not run remotely because these commits have not been pushed.
+
+See RUNBOOK.md for live paths, rollback snapshots and remaining operator work.
 
 ## Remaining work and limits
 

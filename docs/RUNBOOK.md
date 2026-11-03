@@ -117,7 +117,9 @@ restore a verified copy. If storage returns 507, check disk, inodes, permissions
 and temporary-file paths; reload before retrying an ambiguous write.
 
 For this release, the readiness race, exact syscall sandbox, failed snapshot
-writes and legacy/new-format compatibility were checked locally. A staffed
+writes and legacy/new-format compatibility were checked locally. A real rollout also
+exercised automatic rollback, and a verified production backup was restored to
+isolated storage and probed successfully. A staffed
 incident-response exercise and legal notification assessment
 have not been performed. Assess applicable obligations with the operator; the repo
 does not establish regulatory scope or a notification deadline.
