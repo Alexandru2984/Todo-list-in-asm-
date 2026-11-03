@@ -90,14 +90,14 @@ test('JSON/CSV exports and protected recovery download', async ({ page }) => {
   await add(page, '=HYPERLINK("evil")');
   await page.getByRole('button', { name: 'Workspace & backups' }).click();
   let downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'JSON backup' }).click();
+  await page.getByRole('link', { name: 'JSON backup' }).click();
   let download = await downloadEvent;
   const jsonText = await fs.readFile(await download.path(), 'utf8');
   const json = JSON.parse(jsonText);
   expect(json.tasks[0].title).toBe('=HYPERLINK("evil")');
   expect(jsonText).not.toContain('asm_uid');
   downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'CSV spreadsheet' }).click();
+  await page.getByRole('link', { name: 'CSV spreadsheet' }).click();
   download = await downloadEvent;
   const csv = await fs.readFile(await download.path(), 'utf8');
   expect(csv).toContain('"\'=HYPERLINK(""evil"")"');

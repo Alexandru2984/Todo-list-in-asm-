@@ -143,8 +143,6 @@
       dialog.showModal();
       $('#edit-title').select();
     }
-    const exportButton = event.target.closest('[data-export]');
-    if (exportButton) exportTasks(exportButton.dataset.export);
   });
   $('#search-tasks').addEventListener('input', update);
   $('#sort-tasks').addEventListener('change', () => { storage.set('asm_sort', $('#sort-tasks').value); update(); });
@@ -225,34 +223,6 @@
   $('#workspace-settings').addEventListener('click', openSettings);
   $('#export-menu').addEventListener('click', openSettings);
 
-  function exportTasks(format) {
-    const records = tasks().map(row => ({
-      id: row.dataset.id, title: row.querySelector('.task-title').textContent,
-      completed: row.dataset.done === '1', createdAt: (() => {
-        const date = new Date(Number(row.dataset.ts) * 1000);
-        return Number.isNaN(date.getTime()) ? null : date.toISOString();
-      })()
-    }));
-    const csvCell = value => {
-      let text = String(value ?? '');
-      // Neutralize spreadsheet formulas, including whitespace-prefixed formulas.
-      if (/^[\s]*[=+@\-]/.test(text)) text = `'${text}`;
-      return `"${text.replaceAll('"', '""')}"`;
-    };
-    const text = format === 'json'
-      ? JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), tasks: records }, null, 2)
-      : '\uFEFF' + [['id', 'title', 'completed', 'createdAt'], ...records.map(task => [task.id, task.title, task.completed, task.createdAt])].map(row => row.map(csvCell).join(',')).join('\r\n');
-    const blob = new Blob([text], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `asm-tasks-${new Date().toISOString().slice(0, 10)}.${format}`;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    announce('Your tasks, ready to take along.');
-  }
 
   document.addEventListener('keydown', event => {
     if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || $('dialog[open]')) return;

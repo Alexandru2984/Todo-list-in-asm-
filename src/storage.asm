@@ -1,6 +1,6 @@
 %include "src/defs.inc"
 DEFAULT ABS
-extern current_uid, parse_uint, itoa, strlen, write_all
+extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 
 global init_storage, load_todos, append_todo, complete_todo, delete_todo
  global edit_todo, get_todo_list, get_todo_count, clear_done_todos
@@ -255,6 +255,10 @@ load_todos:
     ja .bad
     jmp .validate_title
 .valid_title:
+    mov rdi,rbx
+    call valid_utf8
+    test rax,rax
+    js .bad
     mov rax,r8
     inc rax
     cmp rax,[next_id]

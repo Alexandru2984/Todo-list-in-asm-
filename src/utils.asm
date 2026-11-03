@@ -333,3 +333,140 @@ valid_utf8:
 .bad:
     mov rax,-1
     ret
+
+; Epoch seconds -> exactly YYYY-MM-DDTHH:MM:SSZ + NUL, or 0 out of range.
+; Gregorian calendar from 1970 through 9999; only integer arithmetic/syscalls.
+global format_utc
+format_utc:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    mov r12,rsi
+    mov rax,253402300799
+    cmp rdi,rax
+    ja .invalid
+    mov rax,rdi
+    xor edx,edx
+    mov ecx,86400
+    div rcx
+    mov r13,rdx ; seconds within day
+    add rax,719468
+    xor edx,edx
+    mov ecx,146097
+    div rcx
+    imul r14,rax,400 ; era years
+    mov rbx,rdx ; day of era
+    mov rax,rbx
+    xor edx,edx
+    mov ecx,1460
+    div rcx
+    mov r15,rbx
+    sub r15,rax
+    mov rax,rbx
+    xor edx,edx
+    mov ecx,36524
+    div rcx
+    add r15,rax
+    mov rax,rbx
+    xor edx,edx
+    mov ecx,146096
+    div rcx
+    sub r15,rax
+    mov rax,r15
+    xor edx,edx
+    mov ecx,365
+    div rcx
+    add r14,rax ; provisional year
+    mov r15,rax ; year of era
+    imul r8,rax,365
+    mov rax,r15
+    shr rax,2
+    add r8,rax
+    mov rax,r15
+    xor edx,edx
+    mov ecx,100
+    div rcx
+    sub r8,rax
+    sub rbx,r8 ; day of year, March based
+    lea rax,[rbx*4+rbx+2]
+    xor edx,edx
+    mov ecx,153
+    div rcx
+    mov r15,rax ; month index
+    imul rax,153
+    add rax,2
+    xor edx,edx
+    mov ecx,5
+    div rcx
+    sub rbx,rax
+    inc rbx ; day of month
+    lea r8,[r15+3]
+    cmp r15,10
+    jb .month
+    lea r8,[r15-9]
+.month:
+    cmp r8,2
+    ja .year
+    inc r14
+.year:
+    mov rdi,r12
+    mov rax,r14
+    xor edx,edx
+    mov ecx,100
+    div rcx
+    push rdx
+    call .two_digits
+    pop rax
+    call .two_digits
+    mov al,'-'
+    stosb
+    mov rax,r8
+    call .two_digits
+    mov al,'-'
+    stosb
+    mov rax,rbx
+    call .two_digits
+    mov al,'T'
+    stosb
+    mov rax,r13
+    xor edx,edx
+    mov ecx,3600
+    div rcx
+    mov r13,rdx
+    call .two_digits
+    mov al,':'
+    stosb
+    mov rax,r13
+    xor edx,edx
+    mov ecx,60
+    div rcx
+    mov r13,rdx
+    call .two_digits
+    mov al,':'
+    stosb
+    mov rax,r13
+    call .two_digits
+    mov word [rdi],'Z'
+    mov eax,20
+    jmp .done
+.two_digits:
+    xor edx,edx
+    mov ecx,10
+    div rcx
+    add al,'0'
+    stosb
+    lea eax,[rdx+'0']
+    stosb
+    ret
+.invalid:
+    mov byte [r12],0
+    xor eax,eax
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret

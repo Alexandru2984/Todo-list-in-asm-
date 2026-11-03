@@ -6,7 +6,8 @@ extern get_todo_list, load_todos, clear_done_todos, lock_user_file, unlock_user_
 extern request_method, request_path, request_body
 extern request_cookie, request_origin, request_host, request_site
 
-global handle_request, current_uid, send_error
+global handle_request, current_uid, send_error, copy_string, html_escape, emit_number
+extern export_json, export_csv
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
     see_other db 'HTTP/1.1 303 See Other',13,10,0
@@ -40,6 +41,11 @@ section .data
     http db 'http://',0
     same_origin db 'same-origin',0
     fetch_none db 'none',0
+    export_json_path db '/export.json',0
+    export_csv_path db '/export.csv',0
+    mime_csv db 'text/csv; charset=utf-8',0
+    json_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-tasks.json"',13,10,0
+    csv_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-tasks.csv"',13,10,0
     social_path db '/social-card.png',0
     mime_png db 'image/png',0
     social: incbin 'web/social-card.png'
@@ -762,6 +768,16 @@ handle_request:
     jne .method
 .read:
     mov rdi,request_path
+    mov rsi,export_json_path
+    call strcmp
+    test rax,rax
+    jz .get_export_json
+    mov rdi,request_path
+    mov rsi,export_csv_path
+    call strcmp
+    test rax,rax
+    jz .get_export_csv
+    mov rdi,request_path
     mov rsi,social_path
     call strcmp
     test rax,rax
@@ -918,6 +934,38 @@ handle_request:
     test rax,rax
     jz .post_clear
     jmp .missing
+.get_export_json:
+    mov r13,export_json
+    jmp .get_export
+.get_export_csv:
+    mov r13,export_csv
+.get_export:
+    cmp byte [current_uid],0
+    je .unauthorized
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    push rax
+    call unlock_user_file
+    pop rax
+    test rax,rax
+    js .error
+    mov rdi,res_buf
+    call r13
+    mov rdx,rax
+    mov rdi,r12
+    mov rsi,res_buf
+    mov rcx,ok
+    mov r8,mime_json
+    mov r9,json_headers
+    cmp r13,export_json
+    je .export_send
+    mov r8,mime_csv
+    mov r9,csv_headers
+.export_send:
+    call respond
+    jmp .done
 .get_social:
     mov rdi,r12
     mov rsi,social
