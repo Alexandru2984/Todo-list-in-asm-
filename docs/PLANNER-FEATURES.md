@@ -192,3 +192,15 @@ again under the write lock, assigns fresh IDs/current UTC creation times and
 appends all tasks as one atomic, undoable change. Existing tasks are preserved.
 The normal 1,000-live-task capacity and 2 MiB decoded-source limit apply. Quick
 capture never replaces the workspace; new tasks begin active with normal priority.
+
+## Calendar download
+
+In **Workspace & backups**, choose **Calendar (.ics)** to download every live
+scheduled task as an all-day reminder. Completed tasks are marked [Done]; tasks
+without a due date and trash are omitted. Titles, priority, workflow, projects,
+tags and recurrence choice remain readable in the calendar entry. The download
+uses the workspace cookie and does not contain your recovery key.
+
+It is a snapshot: later edits are not synchronized and no extra future recurring
+occurrences are generated. Keep JSON/CSV for a complete task backup. See the
+[calendar export contract](CALENDAR-EXPORT.md) for encoding/privacy and limits.

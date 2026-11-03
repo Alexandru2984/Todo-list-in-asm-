@@ -479,3 +479,31 @@ test('quick capture form meets automated WCAG checks in light and dark themes', 
     expect(result.violations).toEqual([]);
   }
 });
+
+
+test('dated tasks download as a private calendar snapshot without JavaScript', async ({ browser, page }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await native.locator('.task-properties > summary').click();
+    await native.getByLabel('Due date (UTC)', { exact: true }).fill('2031-01-07');
+    await add(native, 'Calendar milestone Ședință 😀');
+    await native.getByRole('link', { name: 'Workspace & backups' }).click();
+    await native.locator('#workspace-tools > summary').click();
+    const downloadEvent = native.waitForEvent('download');
+    await native.getByRole('link', { name: /Calendar \(\.ics\)$/ }).click();
+    const download = await downloadEvent;
+    expect(download.suggestedFilename()).toBe('asm-dated-tasks.ics');
+    const body = await fs.readFile(await download.path(), 'utf8');
+    expect(body).toContain('BEGIN:VCALENDAR\r\n');
+    expect(body).toContain('DTSTART;VALUE=DATE:20310107\r\n');
+    expect(body.replace(/\r\n /g, '')).toContain('SUMMARY:Calendar milestone Ședință 😀');
+    expect(body).not.toContain((await context.cookies()).find(cookie => cookie.name === 'asm_uid').value);
+    for (const width of [320, 390, 768, 1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+  } finally { await context.close(); }
+});

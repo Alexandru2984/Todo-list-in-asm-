@@ -13,7 +13,7 @@ global authorize_import_headers, send_private_html, res_buf
 global decode_value, decode_buf, decode_stripped
 extern parse_view, build_view, render_template, view_rows, view_count, format_utc
 extern duplicate_todo
-extern export_json, export_csv, export_stats_svg
+extern export_json, export_csv, export_stats_svg, export_calendar
 extern reset_properties, parse_property, property_flags, property_task
 extern render_properties, render_task_badges
 extern undo_workspace, restore_todo, purge_todo, empty_trash
@@ -60,6 +60,9 @@ section .data
     stats_path db '/stats.svg',0
     export_json_path db '/export.json',0
     export_csv_path db '/export.csv',0
+    export_calendar_path db '/export.ics',0
+    mime_calendar db 'text/calendar; charset=utf-8',0
+    calendar_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-dated-tasks.ics"',13,10,0
     mime_csv db 'text/csv; charset=utf-8',0
     json_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-tasks.json"',13,10,0
     csv_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-tasks.csv"',13,10,0
@@ -862,6 +865,11 @@ handle_request:
     test rax,rax
     jz .get_export_csv
     mov rdi,request_path
+    mov rsi,export_calendar_path
+    call strcmp
+    test rax,rax
+    jz .get_export_calendar
+    mov rdi,request_path
     mov rsi,social_path
     call strcmp
     test rax,rax
@@ -1118,6 +1126,9 @@ handle_request:
     jmp .get_export
 .get_export_csv:
     mov r13,export_csv
+    jmp .get_export
+.get_export_calendar:
+    mov r13,export_calendar
 .get_export:
     cmp byte [current_uid],0
     je .unauthorized
@@ -1132,6 +1143,8 @@ handle_request:
     js .error
     mov rdi,res_buf
     call r13
+    test rax,rax
+    js .error
     mov rdx,rax
     mov rdi,r12
     mov rsi,res_buf
@@ -1143,6 +1156,10 @@ handle_request:
     mov r8,mime_svg
     mov r9,private_headers
     cmp r13,export_stats_svg
+    je .export_send
+    mov r8,mime_calendar
+    mov r9,calendar_headers
+    cmp r13,export_calendar
     je .export_send
     mov r8,mime_csv
     mov r9,csv_headers

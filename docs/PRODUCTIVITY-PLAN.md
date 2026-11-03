@@ -11,7 +11,7 @@ Tests use disposable storage and spare ports, never existing production sessions
   trim outer ASCII spaces/tabs. Validate the complete batch, preview, then append
   atomically with fresh IDs, current creation timestamps and one undo step.
   Preserve existing tasks; do not offer replace for this capture format.
-- [ ] Calendar download: private authenticated .ics attachment containing due
+- [x] Calendar download: private authenticated .ics attachment containing due
   tasks as all-day, non-blocking VEVENTs. Escape text, fold UTF-8 content lines,
   keep UIDs stable without disclosing the access key, omit trash/undated tasks.
   Export existing occurrences only; no automatic sync or extra recurring events.
@@ -54,3 +54,10 @@ validation, Unicode, capacity and atomic-failure cases. Four focused browser
 cases passed on desktop/mobile, including no-JavaScript undo/redo and light/dark
 axe checks. Final remote CI and deployment remain pending until both features
 are complete.
+
+Calendar stage: 151 integration tests passed. Six independent calendar cases
+cover private/HEAD policy, exact SHA-256 UID oracles, metadata/UTF-8 escaping,
+recurrence snapshots, corrupt storage and 1,000 dated events with random/boundary
+dates. The expanded fresh-workspace probe passed under the exact production
+service sandbox, followed by native backup verification and isolated restore.
+Final full browser/remote CI/deployment checks remain the release stage.

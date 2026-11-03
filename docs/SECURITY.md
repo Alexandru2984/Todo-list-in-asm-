@@ -82,3 +82,9 @@ unit has a syscall allowlist, no network and only the read-search capability
 needed to read private ASM-owned state. Integrity hashes are not signatures or
 encryption. The utility verifies its own strict USTAR profile; legacy compressed
 archives use the retained compatibility verifier.
+
+Calendar downloads require the same workspace cookie as JSON/CSV and export no
+access key. Task data only enters escaped TEXT values; properties are fixed and
+lines are folded on UTF-8 character boundaries. Stable event UIDs use the existing
+native SHA-256 implementation over a domain-separated workspace/task tuple.
+This is a private attachment, not a public capability URL or calendar feed.

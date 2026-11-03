@@ -14,7 +14,7 @@ all: $(TARGET) build/backup
 build:
 	mkdir -p build
 
-$(TARGET): $(OBJS)
+$(TARGET): $(OBJS) build/sha256.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 build/%.o: src/%.asm src/defs.inc | build

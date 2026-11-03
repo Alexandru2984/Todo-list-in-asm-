@@ -31,6 +31,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.
+- Private native .ics downloads turn scheduled tasks into all-day calendar
+  reminders, with stable opaque identifiers and safe UTF-8 folding.
 - JSON and spreadsheet-safe CSV exports generated in ASM, with native UTC
   calendar formatting; explicit recovery-key download.
 - Responsive layouts checked from 320 to 1440 px; accessible native dialogs,
@@ -112,7 +114,7 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `src/router.asm` | Routing, sessions, same-origin checks, forms, escaping and rendering |
 | `src/view.asm` | Native query parser, Unicode search, bounded merge sort and statistics |
 | `src/template.asm` | Native HTML interpolation and edit/confirmation forms |
-| `src/export*.asm` | Native JSON/CSV serialization and formula protection |
+| `src/export*.asm` | Native JSON/CSV/calendar serialization, format escaping and formula protection |
 | `src/json.asm`, `src/csv.asm`, `src/import*.asm` | Bounded native lexers, import preview/confirmation, reference remapping and global admission lock |
 | `src/query.asm`, `src/layout.asm`, `src/insights.asm` | Structured search, calendar/board and private SVG statistics |
 | `src/history.asm`, `src/relations.asm`, `src/recurrence.asm` | Undo/trash, graph validation and native recurring dates |

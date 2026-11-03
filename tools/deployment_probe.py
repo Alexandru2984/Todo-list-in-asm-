@@ -103,9 +103,23 @@ def probe(base, cleanup_data=None):
         assert request('POST', '/delete', {'id': '1'})[0] == 303, 'Planner delete failed'
         assert request('POST', '/purge', {'id': '1'})[0] == 303, 'Permanent purge failed'
         assert request('POST', '/undo', {})[0] == 409, 'Purge did not clear undo'
+        capture = {'payload': 'Captured release task\nȘedință release task', 'format': 'lines', 'mode': 'merge'}
+        status, _, body = request('POST', '/import-preview', capture)
+        assert status == 200 and b'data-import-live="2"' in body, 'Native quick capture preview failed'
+        assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 1, 'Capture preview mutated data'
+        assert request('POST', '/import', dict(capture, confirmed='1'))[0] == 303, 'Native quick capture failed'
+        records = json.loads(request('GET', '/export.json')[2])['tasks']
+        assert [task['title'] for task in records[-2:]] == ['Captured release task', 'Ședință release task'], 'Captured title round trip failed'
+        status, calendar_headers, calendar = request('GET', '/export.ics')
+        assert status == 200 and calendar_headers['Content-Type'].startswith('text/calendar'), 'Native calendar download failed'
+        assert 'attachment' in calendar_headers['Content-Disposition'] and 'noindex' in calendar_headers['X-Robots-Tag'], 'Calendar privacy failed'
+        assert calendar.count(b'BEGIN:VEVENT\r\n') == 1 and b'DTSTART;VALUE=DATE:20310228\r\n' in calendar, 'Calendar dated-task snapshot failed'
+        assert token.encode() not in calendar, 'Calendar exposed the workspace key'
+        assert request('POST', '/undo', {})[0] == 303, 'Quick capture atomic undo failed'
+        assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 1, 'Quick capture undo contents failed'
         robots = request('GET', '/robots.txt')[2]
         assert b'Allow: /app.css' in robots and b'Allow: /app.js' in robots, 'Public asset crawl policy failed'
-        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, trash/purge and edge policy')
+        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, quick capture, ICS, trash/purge and edge policy')
     finally:
         # Only the fresh getrandom session created by this invocation is removed.
         if cleanup_data and token and re.fullmatch('[a-f0-9]{32}', token):

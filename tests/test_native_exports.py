@@ -23,7 +23,7 @@ class NativeExportTests(unittest.TestCase):
             for i, done, timestamp, title in records), encoding='utf8')
 
     def test_export_requires_own_session_and_has_download_policy(self):
-        for path, mime in [('/export.json', 'application/json'), ('/export.csv', 'text/csv')]:
+        for path, mime in [('/export.json', 'application/json'), ('/export.csv', 'text/csv'), ('/export.ics', 'text/calendar')]:
             with self.subTest(path=path):
                 self.assertEqual(self.server.request('GET', path)[0], 401)
                 status, headers, body = self.get(path)
