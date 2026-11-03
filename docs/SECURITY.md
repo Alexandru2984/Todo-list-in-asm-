@@ -1,0 +1,39 @@
+# Security model
+
+Each workspace is an anonymous bearer capability with 128 random bits generated
+by Linux getrandom. The browser receives it only in an HttpOnly, Secure,
+SameSite=Strict cookie. Normal task URLs and HTML omit the key. Possession of a
+legacy or recovery key still grants full access: this is not password/passkey
+authentication, and there is no key revocation or account recovery yet.
+
+POST requests require exact URL-encoded fields, reject duplicate fields, check
+Origin against Host and reject cross-site/sibling-site Fetch Metadata. Browsers
+without Origin/Fetch Metadata still rely on SameSite cookies. Command-line
+clients can use cookies directly; Origin is a browser CSRF boundary, not a
+replacement for session authentication.
+
+HTTP is limited to one request per connection, 4095 total bytes, explicit
+Content-Length for POST, no transfer coding, no pipelining. A child has an
+absolute 15-second lifetime plus socket timeouts. Deployment MUST impose a
+process/memory cap and request rate limit; the application does not implement a
+worker pool or a global on-disk quota.
+
+Storage supports 1000 live tasks per workspace and 110 UTF-8 bytes per title.
+Records are replayed under a per-workspace lock; writes create a full snapshot,
+check complete writes/fsync/close, rename atomically and sync the data directory.
+Corrupt, oversized or unreadable files return an error and are preserved.
+The `#next=N` snapshot header preserves monotonically increasing IDs. Legacy
+record-only files remain readable. A failed write before rename preserves the
+previous snapshot. A failure after rename or loss of the response can be
+ambiguous: reload before retrying; request idempotency keys are a future feature.
+
+No-follow opens resist symlink redirection. The storage directory must remain
+private. The shared production Unix identity remains a cross-service risk;
+migrate to a dedicated service account and filesystem quota in a separate
+operational change. Assembly code has fixed buffers and no memory-safe runtime;
+tests reduce risk but cannot establish the absence of memory corruption.
+
+Production requires TLS, query-free access logging, strict CSP, no shared
+caching for workspace responses, no task analytics, and an external backup and
+monitoring policy. The app returns explicit security headers even without nginx.
+See RUNBOOK.md and RELEASE.md for operational details and verification.

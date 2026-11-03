@@ -66,3 +66,13 @@
     mov rdx, %4
     syscall
 %endmacro
+
+%define SYS_ALARM     37
+%define SYS_FSYNC     74
+%define SYS_GETRANDOM 318
+%define O_NOFOLLOW    131072
+%define O_DIRECTORY   65536
+%define O_CLOEXEC     524288
+%define REQUEST_MAX   4095
+%define TASK_MAX      1000
+%define TITLE_MAX     110

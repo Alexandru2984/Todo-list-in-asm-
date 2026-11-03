@@ -1,4 +1,5 @@
 %include "src/defs.inc"
+DEFAULT ABS
 
 global strlen
 global print
@@ -197,7 +198,11 @@ write_all:
     jg .advance
     cmp rax, -4         ; -EINTR: retry
     je .loop
-    ret                 ; 0 or other error: give up, return errno
+    test rax, rax
+    jnz .failed
+    mov rax, -5         ; a zero-byte write is an I/O error, never success
+.failed:
+    ret
 .advance:
     add rsi, rax
     sub rdx, rax
@@ -225,4 +230,106 @@ find_char:
 .not_found:
     xor rax, rax
 .found:
+    ret
+
+; Strict nonnegative decimal, <= INT64_MAX. Returns -1 on empty/invalid/overflow.
+; Preserves r8-r15; clobbers rax, rcx, rdx, rsi.
+global parse_uint
+parse_uint:
+    xor eax, eax
+    cmp byte [rdi], 0
+    je .bad
+    mov rsi, rdi
+.loop:
+    movzx ecx, byte [rsi]
+    test ecx, ecx
+    jz .done
+    sub ecx, '0'
+    cmp ecx, 9
+    ja .bad
+    mov rdx, 922337203685477580
+    cmp rax, rdx
+    ja .bad
+    jb .digit
+    cmp ecx, 7
+    ja .bad
+.digit:
+    imul rax, 10
+    add rax, rcx
+    inc rsi
+    jmp .loop
+.bad:
+    mov rax, -1
+.done:
+    ret
+
+; Validate NUL-terminated UTF-8 (reject overlong encodings, surrogates, >U+10FFFF).
+global valid_utf8
+valid_utf8:
+    mov rsi,rdi
+.loop:
+    movzx eax,byte [rsi]
+    test eax,eax
+    jz .ok
+    inc rsi
+    cmp al,128
+    jb .loop
+    cmp al,0xc2
+    jb .bad
+    cmp al,0xdf
+    jbe .two
+    cmp al,0xef
+    jbe .three
+    cmp al,0xf4
+    ja .bad
+    mov ecx,3
+    mov dl,0x80
+    mov dh,0xbf
+    cmp al,0xf0
+    jne .not_f0
+    mov dl,0x90
+.not_f0:
+    cmp al,0xf4
+    jne .check_second
+    mov dh,0x8f
+    jmp .check_second
+.three:
+    mov ecx,2
+    mov dl,0x80
+    mov dh,0xbf
+    cmp al,0xe0
+    jne .not_e0
+    mov dl,0xa0
+.not_e0:
+    cmp al,0xed
+    jne .check_second
+    mov dh,0x9f
+    jmp .check_second
+.two:
+    mov ecx,1
+    mov dl,0x80
+    mov dh,0xbf
+.check_second:
+    mov al,[rsi]
+    cmp al,dl
+    jb .bad
+    cmp al,dh
+    ja .bad
+    inc rsi
+    dec ecx
+    jz .loop
+.cont:
+    mov al,[rsi]
+    sub al,0x80
+    cmp al,0x3f
+    ja .bad
+    inc rsi
+    dec ecx
+    jnz .cont
+    jmp .loop
+.ok:
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-1
     ret

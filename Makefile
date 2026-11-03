@@ -1,31 +1,36 @@
-ASM = nasm
-ASMFLAGS = -f elf64 -g
-LD = ld
-LDFLAGS = 
+ASM ?= nasm
+ASMFLAGS ?= -f elf64 -g -w+error
+LD ?= ld
+LDFLAGS ?= -z noexecstack -z separate-code
 
-SRC_DIR = src
-OBJ_DIR = .
-BIN_DIR = bin
+SRCS := $(wildcard src/*.asm)
+OBJS := $(patsubst src/%.asm,build/%.o,$(SRCS))
+WEB := $(wildcard web/*)
+TARGET := build/server
 
-SRCS = $(wildcard $(SRC_DIR)/*.asm)
-OBJS = $(patsubst $(SRC_DIR)/%.asm, $(OBJ_DIR)/%.o, $(SRCS))
-TARGET = $(BIN_DIR)/server
+.PHONY: all clean run test check
+all: $(TARGET)
 
-.PHONY: all clean run setup
-
-all: setup $(TARGET)
-
-setup:
-	mkdir -p $(BIN_DIR) data logs
+build:
+	mkdir -p build
 
 $(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
+build/%.o: src/%.asm src/defs.inc | build
 	$(ASM) $(ASMFLAGS) $< -o $@
 
+build/router.o: $(WEB)
+
 run: all
+	mkdir -p data
 	./$(TARGET)
 
+test: all
+	python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+check: test
+	node --check web/app.js
+
 clean:
-	rm -f $(OBJ_DIR)/*.o $(TARGET)
+	rm -rf build

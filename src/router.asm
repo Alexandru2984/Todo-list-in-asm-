@@ -1,961 +1,1274 @@
 %include "src/defs.inc"
+DEFAULT ABS
+extern strlen, strcmp, strncmp, write_all, itoa, parse_uint, valid_utf8
+extern append_todo, complete_todo, delete_todo, edit_todo, reopen_todo
+extern get_todo_list, load_todos, clear_done_todos, lock_user_file, unlock_user_file
+extern request_method, request_path, request_body
+extern request_cookie, request_origin, request_host, request_site
 
-extern strlen
-extern strncmp
-extern print
-extern write_all
-extern itoa
-extern atoi
-extern append_todo
-extern complete_todo
-extern delete_todo
-extern edit_todo
-extern get_todo_list
-extern load_todos
-extern clear_done_todos
-extern lock_user_file
-extern unlock_user_file
-
-global handle_request
-global current_uid
-
+global handle_request, current_uid, send_error
 section .data
-    ; Referrer-Policy keeps the uid (capability token in the URL) out of
-    ; outbound Referer headers; no-store keeps it out of shared caches.
-    http_200_pre db "HTTP/1.1 200 OK", 13, 10
-                 db "Content-Type: text/html; charset=utf-8", 13, 10
-                 db "Cache-Control: no-store", 13, 10
-                 db "X-Content-Type-Options: nosniff", 13, 10
-                 db "Referrer-Policy: no-referrer", 13, 10
-                 db "Content-Length: ", 0
-    http_200_post db 13, 10, "Connection: close", 13, 10, 13, 10, 0
-    http_303_prefix db "HTTP/1.1 303 See Other", 13, 10, "Location: /?uid=", 0
-    http_303_tail db 13, 10, "Content-Length: 0", 13, 10, 13, 10, 0
-    http_404 db "HTTP/1.1 404 Not Found", 13, 10, "Content-Length: 9", 13, 10, "X-Content-Type-Options: nosniff", 13, 10, "Connection: close", 13, 10, 13, 10, "Not Found", 0
-    http_405 db "HTTP/1.1 405 Method Not Allowed", 13, 10, "Allow: POST", 13, 10, "Content-Length: 18", 13, 10, "Connection: close", 13, 10, 13, 10, "Method Not Allowed", 0
+    ok db 'HTTP/1.1 200 OK',13,10,0
+    see_other db 'HTTP/1.1 303 See Other',13,10,0
+    common_headers db "Cache-Control: no-store",13,10
+        db "X-Content-Type-Options: nosniff",13,10
+        db "Referrer-Policy: no-referrer",13,10
+        db "X-Frame-Options: DENY",13,10
+        db "Permissions-Policy: camera=(), microphone=(), geolocation=()",13,10
+        db "Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",13,10
+        db 'Content-Type: ',0
+    content_length db 13,10,'Content-Length: ',0
+    header_end db 'Connection: close',13,10,13,10,0
+    crlf db 13,10,0
+    mime_html db 'text/html; charset=utf-8',0
+    mime_text db 'text/plain; charset=utf-8',0
+    mime_css db 'text/css; charset=utf-8',0
+    mime_js db 'text/javascript; charset=utf-8',0
+    mime_xml db 'application/xml; charset=utf-8',0
+    mime_svg db 'image/svg+xml',0
+    mime_json db 'application/json; charset=utf-8',0
+    empty db 0
+    private_headers db 'X-Robots-Tag: noindex, nofollow',13,10,0
+    method_headers db 'Allow: GET, HEAD, POST',13,10,'X-Robots-Tag: noindex, nofollow',13,10,0
+    app_location db 'Location: /app',13,10,'X-Robots-Tag: noindex, nofollow',13,10,0
+    home_location db 'Location: /',13,10,0
+    session_prefix db 'Location: /app',13,10,'X-Robots-Tag: noindex, nofollow',13,10,'Set-Cookie: asm_uid=',0
+    session_tail db '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000',13,10,0
+    forget_headers db 'Location: /',13,10,'Set-Cookie: asm_uid=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',13,10,0
+    cookie_key db 'asm_uid=',0
+    https db 'https://',0
+    http db 'http://',0
+    same_origin db 'same-origin',0
+    fetch_none db 'none',0
+    key_title db 'title',0
+    key_id db 'id',0
+    key_token db 'token',0
+    health db '{"status":"ok"}',10
+    health_len equ $-health
+    hex_chars db '0123456789abcdef'
 
-    html_header_1 db "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>", 10
-                  db "<meta name='viewport' content='width=device-width,initial-scale=1'>", 10
-                  db "<title>ASM TODO</title><style>", 10
-                  db "*{box-sizing:border-box;margin:0;padding:0}", 10
-                  db "body{font:16px/1.5 system-ui,sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh;padding:2rem 1rem}", 10
-                  db ".wrap{max-width:640px;margin:auto}", 10
-                  db "h1{text-align:center;font-size:2rem;background:linear-gradient(135deg,#58a6ff,#bc8cff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1.5rem}", 10
-                  db ".af{display:flex;gap:.5rem;margin-bottom:1rem}", 10
-                  db ".af input{flex:1;padding:.6rem .8rem;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:1rem;outline:none}", 10
-                  db ".af input:focus{border-color:#58a6ff}", 10
-                  db ".af button{padding:.6rem 1.2rem;background:#238636;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:1rem;font-weight:600}", 10
-                  db ".af button:hover{background:#2ea043}", 10
-                  db ".st{color:#8b949e;font-size:.875rem;margin-bottom:.5rem}", 10
-                  db ".fi{display:flex;gap:.5rem;margin-bottom:1rem}", 10
-                  db ".fi button{padding:.3rem .8rem;border:1px solid #30363d;border-radius:6px;background:transparent;color:#8b949e;cursor:pointer;font-size:.875rem}", 10
-                  db ".fi button.on{background:#238636;color:#fff;border-color:#238636}", 10
-                  db "ul{list-style:none}", 10
-                  db "li{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.75rem 1rem;margin-bottom:.5rem;display:flex;align-items:center;gap:1rem}", 10
-                  db "li.done .tt{text-decoration:line-through;color:#8b949e}", 10
-                  db ".ti{flex:1;min-width:0}", 10
-                  db ".tt{display:block;word-break:break-word}", 10
-                  db ".ts{display:block;font-size:.75rem;color:#8b949e;margin-top:.2rem}", 10
-                  db ".ta{display:flex;gap:.4rem;flex-shrink:0}", 10
-                  db "form{display:inline}", 10
-                  db ".bd{padding:.3rem .5rem;background:#238636;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.875rem}", 10
-                  db ".bd:hover{background:#2ea043}", 10
-                  db ".bx{padding:.3rem .5rem;background:#da3633;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.875rem}", 10
-                  db ".bx:hover{background:#f85149}", 10
-                  db ".be{padding:.3rem .5rem;background:#1f6feb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.875rem}", 10
-                  db ".be:hover{background:#388bfd}", 10
-                  db "</style>", 10
-                  db "<script>(function(){var p=new URLSearchParams(window.location.search);var u=p.get('uid');if(!u){u=localStorage.getItem('asm_uid');if(!u){u=crypto.randomUUID().replace(/-/g,'');localStorage.setItem('asm_uid',u);}window.location.replace('/?uid='+u);}else{localStorage.setItem('asm_uid',u);}})();</script>", 10
-                  db "</head><body><div class='wrap'>", 10
-                  db "<h1>ASM TODO</h1>", 10
-                  db "<form class='af' method='POST' action='/add'>", 10
-                  db "<input type='hidden' name='uid' value='", 0
+    home: incbin 'web/index.html'
+    home_len equ $-home
+    css: incbin 'web/app.css'
+    css_len equ $-css
+    js: incbin 'web/app.js'
+    js_len equ $-js
+    robots: incbin 'web/robots.txt'
+    robots_len equ $-robots
+    sitemap: incbin 'web/sitemap.xml'
+    sitemap_len equ $-sitemap
+    favicon: incbin 'web/favicon.svg'
+    favicon_len equ $-favicon
+    app_head: incbin 'web/app-head.html'
+    db 0
+    app_foot: incbin 'web/app-foot.html'
+    db 0
 
-    html_header_2 db "'><input type='text' name='title' placeholder='New task...' required>", 10
-                  db "<button type='submit'>Add</button>", 10
-                  db "</form>", 10
-                  db "<p class='st' id='stats'></p>", 10
-                  db "<div class='fi'>", 10
-                  db "<button class='on' data-f='all'>All</button>", 10
-                  db "<button data-f='active'>Active</button>", 10
-                  db "<button data-f='done'>Done</button>", 10
-                  db "</div>", 10
-                  db "<ul id='tl'>", 10, 0
-
-    html_footer_1 db "</ul>", 10, 0
-
-    html_footer_2 db "</div>", 10
-                  db "<script>", 10
-                  db "function ed(b){var f=b.form;var t=prompt('Edit task',f.closest('li').querySelector('.tt').textContent);if(t!==null&&t.trim()!==''){f.elements['title'].value=t;f.submit();}}", 10
-                  db "function fmtDate(ts){if(!ts)return '';return new Date(ts*1000).toLocaleString();}", 10
-                  db "function filter(t,btn){document.querySelectorAll('.fi button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');document.querySelectorAll('#tl li').forEach(function(li){if(t==='all')li.style.display='';else if(t==='active')li.style.display=li.dataset.done==='0'?'':'none';else li.style.display=li.dataset.done==='1'?'':'none';});}", 10
-                  db "function stats(){var items=document.querySelectorAll('#tl li');var n=0;items.forEach(function(li){if(li.dataset.done==='1')n++;});var el=document.getElementById('stats');if(el)el.textContent=items.length+' task'+(items.length!==1?'s':'')+', '+n+' done';}", 10
-                  db "window.onload=function(){", 10
-                  db "document.querySelectorAll('#tl li .ts').forEach(function(el){var ts=parseInt(el.closest('li').dataset.ts);el.textContent=fmtDate(ts);});", 10
-                  db "stats();", 10
-                  db "document.querySelectorAll('.fi button').forEach(function(b){b.onclick=function(){filter(b.getAttribute('data-f'),b);};});", 10
-                  db "var hasDone=Array.from(document.querySelectorAll('#tl li')).some(function(li){return li.dataset.done==='1';});", 10
-                  db "var cdf=document.getElementById('cdf');if(cdf&&hasDone)cdf.style.display='block';", 10
-                  db "};", 10
-                  db "</script>", 10
-                  db "</body></html>", 10, 0
-
-    li_active_1 db "<li data-ts='", 0
-    li_active_2 db "' data-done='0'><div class='ti'><span class='tt'>", 0
-    li_done_1   db "<li class='done' data-ts='", 0
-    li_done_2   db "' data-done='1'><div class='ti'><span class='tt'>", 0
-    li_mid      db "</span><span class='ts'></span></div><div class='ta'>", 0
-
-    form_complete_open db "<form method='POST' action='/complete'><input type='hidden' name='uid' value='", 0
-    form_delete_open   db "<form method='POST' action='/delete'><input type='hidden' name='uid' value='", 0
-    form_edit_open     db "<form method='POST' action='/edit'><input type='hidden' name='uid' value='", 0
-    form_uid_id_bridge db "'><input type='hidden' name='id' value='", 0
-    form_complete_2    db "'><button class='bd'>&#10003;</button></form>", 0
-    form_delete_2      db "'><button class='bx'>&#10007;</button></form></div></li>", 10, 0
-    form_edit_2        db "'><input type='hidden' name='title'><button class='be' type='button' onclick='ed(this)'>&#9998;</button></form>", 0
-
-    get_root db "GET /", 0
-    post_add db "POST /add ", 0
-    post_complete db "POST /complete ", 0
-    post_delete db "POST /delete ", 0
-    post_clear_done db "POST /clear-done ", 0
-    post_edit db "POST /edit ", 0
-
-    get_add db "GET /add ", 0
-    get_complete db "GET /complete ", 0
-    get_delete db "GET /delete ", 0
-    get_clear_done db "GET /clear-done ", 0
-    get_edit db "GET /edit ", 0
-
-    html_clear_done_open db "<form method='POST' action='/clear-done' id='cdf' style='display:none;margin-bottom:1rem'><input type='hidden' name='uid' value='", 0
-    html_clear_done_close db "'><button class='bx' style='width:100%'>&#10003; Clear done</button></form>", 10, 0
-
-    rnrn db 13, 10, 13, 10, 0
-
+    li_open db '<li data-id="',0
+    li_ts db '" data-ts="',0
+    li_active db '" data-done="0"><div class="task-copy"><span class="task-title">',0
+    li_done db '" data-done="1" class="done"><div class="task-copy"><span class="task-title">',0
+    li_actions db '</span><time class="task-date"></time></div><div class="task-actions">',0
+    edit_open db '<button type="button" data-edit aria-label="Edit task">Edit</button>',0
+    complete_open db '<form method="post" action="/complete"><input type="hidden" name="id" value="',0
+    reopen_open db '<form method="post" action="/reopen"><input type="hidden" name="id" value="',0
+    complete_close db '"><button aria-label="Complete task">Done</button></form>',0
+    reopen_close db '"><button aria-label="Reopen task">Reopen</button></form>',0
+    delete_open db '<form method="post" action="/delete"><input type="hidden" name="id" value="',0
+    delete_close db '"><button class="delete-button" aria-label="Delete task">Delete</button></form></div></li>',10,0
+    status_400 db 'HTTP/1.1 400 Bad Request',13,10,0
+    error_400 db 'Invalid or incomplete request.',10
+    error_400_len equ $-error_400
+    status_401 db 'HTTP/1.1 401 Unauthorized',13,10,0
+    error_401 db 'Open or restore a workspace first.',10
+    error_401_len equ $-error_401
+    status_403 db 'HTTP/1.1 403 Forbidden',13,10,0
+    error_403 db 'This request must come from the same origin.',10
+    error_403_len equ $-error_403
+    status_404 db 'HTTP/1.1 404 Not Found',13,10,0
+    error_404 db 'The requested task or page was not found.',10
+    error_404_len equ $-error_404
+    status_405 db 'HTTP/1.1 405 Method Not Allowed',13,10,0
+    error_405 db 'This method is not allowed.',10
+    error_405_len equ $-error_405
+    status_409 db 'HTTP/1.1 409 Conflict',13,10,0
+    error_409 db 'Workspace capacity reached, or a different workspace is already open.',10
+    error_409_len equ $-error_409
+    status_411 db 'HTTP/1.1 411 Length Required',13,10,0
+    error_411 db 'Content-Length is required.',10
+    error_411_len equ $-error_411
+    status_413 db 'HTTP/1.1 413 Content Too Large',13,10,0
+    error_413 db 'The request exceeds the 4095-byte limit.',10
+    error_413_len equ $-error_413
+    status_415 db 'HTTP/1.1 415 Unsupported Media Type',13,10,0
+    error_415 db 'Use application/x-www-form-urlencoded.',10
+    error_415_len equ $-error_415
+    status_417 db 'HTTP/1.1 417 Expectation Failed',13,10,0
+    error_417 db 'Expect headers are not supported.',10
+    error_417_len equ $-error_417
+    status_422 db 'HTTP/1.1 422 Unprocessable Content',13,10,0
+    error_422 db 'Enter a task between 1 and 110 UTF-8 bytes.',10
+    error_422_len equ $-error_422
+    status_500 db 'HTTP/1.1 500 Internal Server Error',13,10,0
+    error_500 db 'Stored data could not be read safely. Please contact the operator.',10
+    error_500_len equ $-error_500
+    status_503 db 'HTTP/1.1 503 Service Unavailable',13,10,0
+    error_503 db 'The workspace is temporarily unavailable. Please retry.',10
+    error_503_len equ $-error_503
+    status_507 db 'HTTP/1.1 507 Insufficient Storage',13,10,0
+    error_507 db 'Saving failed. Your change was not confirmed; reload before retrying.',10
+    error_507_len equ $-error_507
+    path_0 db '/',0
+    path_1 db '/app',0
+    path_2 db '/app.css',0
+    path_3 db '/app.js',0
+    path_4 db '/robots.txt',0
+    path_5 db '/sitemap.xml',0
+    path_6 db '/favicon.svg',0
+    path_7 db '/healthz',0
+    path_8 db '/start',0
+    path_9 db '/restore',0
+    path_10 db '/forget',0
+    path_11 db '/add',0
+    path_12 db '/complete',0
+    path_13 db '/reopen',0
+    path_14 db '/delete',0
+    path_15 db '/edit',0
+    path_16 db '/clear-done',0
 section .bss
-    res_buf resb 2097152    ; 2MB — covers 1000 todos × ~1400 bytes (3 action forms) + overhead
-    hdr_buf resb 256
-    id_str resb 32
     current_uid resb 64
-
+    res_buf resb 2097152
+    hdr_buf resb 2048
+    extra_buf resb 512
+    number_buf resb 24
+    random_buf resb 16
+    form_title resb TITLE_MAX+1
+    form_token resb 64
+    form_id resq 1
+    decode_stripped resq 1
+    form_flags resq 1
+    decode_buf resb REQUEST_MAX+1
 section .text
 
-; -----------------------------------------------------------------------------
-; handle_request
-; rdi = request string
-; rsi = socket fd
-; -----------------------------------------------------------------------------
-handle_request:
-    push rbp
-    mov rbp, rsp
+; Copy static NUL-terminated strings, return updated rdi.
+copy_string:
+.loop:
+    lodsb
+    test al,al
+    jz .done
+    stosb
+    jmp .loop
+.done:
+    ret
+
+; fd, body, length, status, MIME, extra headers. Explicit lengths throughout.
+respond:
     push rbx
     push r12
     push r13
-
-    mov rbx, rdi ; req
-    mov r12, rsi ; fd
-
-    ; Clear current_uid for this request
-    mov byte [current_uid], 0
-
-    ; Route matching — GET /  or  GET /?uid=...
-    mov rdi, rbx
-    mov rsi, get_root
-    mov rdx, 5
-    call strncmp
-    test rax, rax
-    jnz .check_post_add
-    ; Byte at [rbx+5] must be ' ' or '?'
-    mov al, byte [rbx+5]
-    cmp al, ' '
-    je .do_get_root
-    cmp al, '?'
-    je .do_get_root
-
-.check_post_add:
-    mov rdi, rbx
-    mov rsi, post_add
-    mov rdx, 10
-    call strncmp
-    test rax, rax
-    jz .do_post_add
-
-    mov rdi, rbx
-    mov rsi, post_complete
-    mov rdx, 15
-    call strncmp
-    test rax, rax
-    jz .do_post_complete
-
-    mov rdi, rbx
-    mov rsi, post_delete
-    mov rdx, 13
-    call strncmp
-    test rax, rax
-    jz .do_post_delete
-
-    mov rdi, rbx
-    mov rsi, post_clear_done
-    mov rdx, 17
-    call strncmp
-    test rax, rax
-    jz .do_post_clear_done
-
-    mov rdi, rbx
-    mov rsi, post_edit
-    mov rdx, 11
-    call strncmp
-    test rax, rax
-    jz .do_post_edit
-
-    ; GET on a POST-only endpoint → 405 with Allow: POST
-    mov rdi, rbx
-    mov rsi, get_add
-    mov rdx, 9
-    call strncmp
-    test rax, rax
-    jz .method_not_allowed
-    mov rdi, rbx
-    mov rsi, get_complete
-    mov rdx, 14
-    call strncmp
-    test rax, rax
-    jz .method_not_allowed
-    mov rdi, rbx
-    mov rsi, get_delete
-    mov rdx, 12
-    call strncmp
-    test rax, rax
-    jz .method_not_allowed
-    mov rdi, rbx
-    mov rsi, get_clear_done
-    mov rdx, 16
-    call strncmp
-    test rax, rax
-    jz .method_not_allowed
-    mov rdi, rbx
-    mov rsi, get_edit
-    mov rdx, 10
-    call strncmp
-    test rax, rax
-    jz .method_not_allowed
-
-    ; 404
-    mov rdi, http_404
-    call strlen
-    mov rdx, rax
-    mov rdi, r12
-    mov rsi, http_404
+    push r14
+    push r15
+    push r9
+    mov rbx,rdi
+    mov r12,rsi
+    mov r13,rdx
+    mov r14,rcx
+    mov r15,r8
+    mov rdi,hdr_buf
+    mov rsi,r14
+    call copy_string
+    mov rsi,common_headers
+    call copy_string
+    mov rsi,r15
+    call copy_string
+    mov rsi,content_length
+    call copy_string
+    mov rsi,rdi
+    mov rdi,r13
+    call itoa
+    lea rdi,[rsi+rax]
+    mov rsi,crlf
+    call copy_string
+    pop rsi
+    call copy_string
+    mov rsi,header_end
+    call copy_string
+    mov rdx,rdi
+    sub rdx,hdr_buf
+    mov rsi,hdr_buf
+    mov rdi,rbx
     call write_all
-    jmp .done
-
-.method_not_allowed:
-    mov rdi, http_405
-    call strlen
-    mov rdx, rax
-    mov rdi, r12
-    mov rsi, http_405
+    cmp qword [request_method],3
+    je .done
+    mov rdi,rbx
+    mov rsi,r12
+    mov rdx,r13
     call write_all
-    jmp .done
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
 
-.do_get_root:
-    ; Extract uid from URL query string
-    mov rdi, rbx
-    call find_uid_in_url
-    test rax, rax
-    jz .get_load
-    mov rdi, rax
-    call copy_uid
-.get_load:
-    call lock_user_file
-    call load_todos
-    call unlock_user_file
-    call send_html
-    jmp .done
+send_error:
+    mov r10,rdi
+    mov rdi,rsi
+    cmp r10,400
+    je .e400
+    cmp r10,401
+    je .e401
+    cmp r10,403
+    je .e403
+    cmp r10,404
+    je .e404
+    cmp r10,405
+    je .e405
+    cmp r10,409
+    je .e409
+    cmp r10,411
+    je .e411
+    cmp r10,413
+    je .e413
+    cmp r10,415
+    je .e415
+    cmp r10,417
+    je .e417
+    cmp r10,422
+    je .e422
+    cmp r10,500
+    je .e500
+    cmp r10,503
+    je .e503
+    cmp r10,507
+    je .e507
+    jmp .e500
+.e400:
+    mov rsi,error_400
+    mov edx,error_400_len
+    mov rcx,status_400
+    jmp .send
+.e401:
+    mov rsi,error_401
+    mov edx,error_401_len
+    mov rcx,status_401
+    jmp .send
+.e403:
+    mov rsi,error_403
+    mov edx,error_403_len
+    mov rcx,status_403
+    jmp .send
+.e404:
+    mov rsi,error_404
+    mov edx,error_404_len
+    mov rcx,status_404
+    jmp .send
+.e405:
+    mov rsi,error_405
+    mov edx,error_405_len
+    mov rcx,status_405
+    mov r8,mime_text
+    mov r9,method_headers
+    jmp respond
+.e409:
+    mov rsi,error_409
+    mov edx,error_409_len
+    mov rcx,status_409
+    jmp .send
+.e411:
+    mov rsi,error_411
+    mov edx,error_411_len
+    mov rcx,status_411
+    jmp .send
+.e413:
+    mov rsi,error_413
+    mov edx,error_413_len
+    mov rcx,status_413
+    jmp .send
+.e415:
+    mov rsi,error_415
+    mov edx,error_415_len
+    mov rcx,status_415
+    jmp .send
+.e417:
+    mov rsi,error_417
+    mov edx,error_417_len
+    mov rcx,status_417
+    jmp .send
+.e422:
+    mov rsi,error_422
+    mov edx,error_422_len
+    mov rcx,status_422
+    jmp .send
+.e500:
+    mov rsi,error_500
+    mov edx,error_500_len
+    mov rcx,status_500
+    jmp .send
+.e503:
+    mov rsi,error_503
+    mov edx,error_503_len
+    mov rcx,status_503
+    jmp .send
+.e507:
+    mov rsi,error_507
+    mov edx,error_507_len
+    mov rcx,status_507
+    jmp .send
+.send:
+    mov r8,mime_text
+    mov r9,private_headers
+    jmp respond
 
-.do_post_add:
-    call extract_body
-    test rax, rax
-    jz .redirect
-    mov r13, rax
-    mov rdi, r13
-    call find_uid
-    test rax, rax
-    jz .redirect
-    mov rdi, rax
+; rdi -> exact 32 lowercase hex chars; copy to current_uid or return -400.
+copy_uid:
+    xor ecx,ecx
+.loop:
+    mov al,[rdi+rcx]
+    cmp al,'0'
+    jb .bad
+    cmp al,'9'
+    jbe .digit
+    cmp al,'a'
+    jb .bad
+    cmp al,'f'
+    ja .bad
+.digit:
+    inc ecx
+    cmp ecx,32
+    jb .loop
+    cmp byte [rdi+32],0
+    jne .bad
+    mov rsi,rdi
+    mov rdi,current_uid
+    mov ecx,32
+    rep movsb
+    mov byte [rdi],0
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-400
+    ret
+
+; Cookie parser matches only semicolon-delimited asm_uid, rejects duplicates.
+parse_cookie:
+    mov byte [current_uid],0
+    mov r8,request_cookie
+    xor r9d,r9d
+.next:
+    cmp byte [r8],0
+    je .ok
+    cmp byte [r8],' '
+    je .skip
+    cmp byte [r8],';'
+    je .skip
+    mov r10,r8
+.end:
+    cmp byte [r10],0
+    je .match
+    cmp byte [r10],';'
+    je .match
+    inc r10
+    jmp .end
+.match:
+    mov rdi,r8
+    mov rsi,cookie_key
+    mov edx,8
+    call strncmp
+    test rax,rax
+    jnz .advance
+    inc r9
+    cmp r9,1
+    ja .bad
+    mov rax,r10
+    sub rax,r8
+    cmp rax,40
+    jne .bad
+    mov r11b,[r10]
+    mov byte [r10],0
+    push r10
+    push r11
+    lea rdi,[r8+8]
     call copy_uid
-    cmp byte [current_uid], 0
-    je .redirect
-    call lock_user_file
-    call load_todos
-    mov rdi, r13
-    call find_title
-    test rax, rax
-    jz .redirect_unlock
-    mov rdi, rax
-    call url_decode
-    ; skip empty title
-    cmp byte [rax], 0
-    je .redirect_unlock
-    ; truncate title to max 110 chars (line_buf 512, slot 111 bytes)
-    push rax
-    mov rdi, rax
-    mov ecx, 111
-.scan_title:
-    dec ecx
-    jz .trunc_title
-    cmp byte [rdi], 0
-    jz .do_append
+    pop r11
+    pop r10
+    mov [r10],r11b
+    test rax,rax
+    js .bad
+.advance:
+    mov r8,r10
+    cmp byte [r8],0
+    je .ok
+.skip:
+    inc r8
+    jmp .next
+.ok:
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-400
+    ret
+
+; Reject sibling-site and cross-site writes; Origin must exactly match Host.
+check_origin:
+    cmp byte [request_site],0
+    je .origin
+    mov rdi,request_site
+    mov rsi,same_origin
+    call strcmp
+    test rax,rax
+    jz .origin
+    mov rdi,request_site
+    mov rsi,fetch_none
+    call strcmp
+    test rax,rax
+    jnz .bad
+.origin:
+    cmp byte [request_origin],0
+    je .ok
+    mov rdi,extra_buf
+    mov rsi,https
+    call copy_string
+    mov rsi,request_host
+    call copy_string
+    mov byte [rdi],0
+    mov rdi,extra_buf
+    mov rsi,request_origin
+    call strcmp
+    test rax,rax
+    jz .ok
+    ; Plain HTTP is for isolated loopback development only.
+    mov rdi,request_host
+    cmp dword [rdi],'127.'
+    jne .localhost
+    cmp dword [rdi+4],'0.0.'
+    jne .bad
+    cmp word [rdi+8],'1:'
+    je .local
+    cmp word [rdi+8],'1'
+    je .local
+    jmp .bad
+.localhost:
+    mov rax,'localhos'
+    cmp [rdi],rax
+    jne .bad
+    cmp byte [rdi+8],'t'
+    jne .bad
+    cmp byte [rdi+9],0
+    je .local
+    cmp byte [rdi+9],':'
+    jne .bad
+.local:
+    mov rdi,extra_buf
+    mov rsi,http
+    call copy_string
+    mov rsi,request_host
+    call copy_string
+    mov byte [rdi],0
+    mov rdi,extra_buf
+    mov rsi,request_origin
+    call strcmp
+    test rax,rax
+    jnz .bad
+.ok:
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-403
+    ret
+
+; Decode a bounded form value into decode_buf, validating %XX and UTF-8.
+; Strip storage delimiters and controls. rdi=input, rax=status.
+decode_value:
+    mov qword [decode_stripped],0
+    mov rsi,rdi
+    mov rdi,decode_buf
+.loop:
+    lodsb
+    test al,al
+    jz .end
+    cmp al,'+'
+    jne .percent
+    mov al,' '
+    jmp .put
+.percent:
+    cmp al,'%'
+    jne .put
+    lodsb
+    call hex_value
+    test eax,eax
+    js .bad
+    mov r8d,eax
+    shl r8d,4
+    lodsb
+    call hex_value
+    test eax,eax
+    js .bad
+    or eax,r8d
+.put:
+    cmp al,32
+    jb .strip
+    cmp al,127
+    je .strip
+    cmp al,'|'
+    je .strip
+    stosb
+    jmp .loop
+.strip:
+    mov qword [decode_stripped],1
+    jmp .loop
+.end:
+    mov byte [rdi],0
+    mov rdi,decode_buf
+    call valid_utf8
+    test rax,rax
+    js .bad
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-400
+    ret
+hex_value:
+    movzx eax,al
+    cmp al,'0'
+    jb .bad
+    cmp al,'9'
+    jbe .digit
+    or al,32
+    cmp al,'a'
+    jb .bad
+    cmp al,'f'
+    ja .bad
+    sub eax,87
+    ret
+.digit:
+    sub eax,'0'
+    ret
+.bad:
+    mov rax,-1
+    ret
+
+; Exact field names, reject duplicate/unknown fields and invalid decimal IDs.
+parse_form:
+    push rbx
+    push r12
+    push r13
+    mov qword [form_flags],0
+    mov byte [form_title],0
+    mov byte [form_token],0
+    mov qword [form_id],0
+    mov rbx,[request_body]
+.field:
+    cmp byte [rbx],0
+    je .ok
+    mov r12,rbx
+.find_end:
+    cmp byte [r12],0
+    je .end_field
+    cmp byte [r12],'&'
+    je .end_field
+    inc r12
+    jmp .find_end
+.end_field:
+    mov r13,r12
+    cmp byte [r12],0
+    je .terminated
+    inc r13
+    cmp byte [r13],0
+    je .bad
+    mov byte [r12],0
+.terminated:
+    mov rdi,rbx
+.find_eq:
+    cmp byte [rdi],0
+    je .bad
+    cmp byte [rdi],'='
+    je .eq
     inc rdi
-    jmp .scan_title
-.trunc_title:
-    mov byte [rdi], 0
-.do_append:
-    pop rdi
-    call append_todo
-    jmp .redirect_unlock
-
-.do_post_complete:
-    call extract_body
-    test rax, rax
-    jz .redirect
-    mov r13, rax
-    mov rdi, r13
-    call find_uid
-    test rax, rax
-    jz .redirect
-    mov rdi, rax
-    call copy_uid
-    cmp byte [current_uid], 0
-    je .redirect
-    call lock_user_file
-    call load_todos
-    mov rdi, r13
-    call find_id
-    test rax, rax
-    jz .redirect_unlock
-    mov rdi, rax
-    call atoi
-    mov rdi, rax
-    call complete_todo
-    jmp .redirect_unlock
-
-.do_post_delete:
-    call extract_body
-    test rax, rax
-    jz .redirect
-    mov r13, rax
-    mov rdi, r13
-    call find_uid
-    test rax, rax
-    jz .redirect
-    mov rdi, rax
-    call copy_uid
-    cmp byte [current_uid], 0
-    je .redirect
-    call lock_user_file
-    call load_todos
-    mov rdi, r13
-    call find_id
-    test rax, rax
-    jz .redirect_unlock
-    mov rdi, rax
-    call atoi
-    mov rdi, rax
-    call delete_todo
-    jmp .redirect_unlock
-
-.do_post_edit:
-    call extract_body
-    test rax, rax
-    jz .redirect
-    mov r13, rax
-    mov rdi, r13
-    call find_uid
-    test rax, rax
-    jz .redirect
-    mov rdi, rax
-    call copy_uid
-    cmp byte [current_uid], 0
-    je .redirect
-    call lock_user_file
-    call load_todos
-    mov rdi, r13
-    call find_id
-    test rax, rax
-    jz .redirect_unlock
-    mov rdi, rax
-    call atoi
-    push rax                ; id
-    mov rdi, r13
-    call find_title
-    test rax, rax
-    jz .redirect_unlock_pop
-    mov rdi, rax
-    call url_decode
-    cmp byte [rax], 0
-    je .redirect_unlock_pop
-    ; truncate title to max 110 chars (same limit as /add)
-    push rax
-    mov rdi, rax
-    mov ecx, 111
-.scan_etitle:
-    dec ecx
-    jz .trunc_etitle
-    cmp byte [rdi], 0
-    jz .do_edit
+    jmp .find_eq
+.eq:
+    mov byte [rdi],0
     inc rdi
-    jmp .scan_etitle
-.trunc_etitle:
-    mov byte [rdi], 0
-.do_edit:
-    pop rsi                 ; title
-    pop rdi                 ; id
-    call edit_todo
-    jmp .redirect_unlock
-.redirect_unlock_pop:
-    pop rax
-    jmp .redirect_unlock
-
-.do_post_clear_done:
-    call extract_body
-    test rax, rax
-    jz .redirect
-    mov r13, rax
-    mov rdi, r13
-    call find_uid
-    test rax, rax
-    jz .redirect
-    mov rdi, rax
-    call copy_uid
-    cmp byte [current_uid], 0
-    je .redirect
-    call lock_user_file
-    call load_todos
-    call clear_done_todos
-    jmp .redirect_unlock
-
-.redirect_unlock:
-    call unlock_user_file
-.redirect:
-    ; Build "HTTP/1.1 303 See Other\r\nLocation: /?uid={uid}\r\n\r\n" in res_buf
-    mov rdi, res_buf
-    mov rsi, http_303_prefix
-    call strcpy_fwd
-    ; append current_uid (may be empty string — that's fine, redirect to /?uid=)
-    mov rsi, current_uid
-    call strcpy_fwd
-    mov rsi, http_303_tail
-    call strcpy_fwd
-
-    mov rsi, res_buf
-    mov rdx, rdi
-    sub rdx, res_buf
-    mov rdi, r12
-    call write_all
+    call decode_value
+    test rax,rax
+    js .done
+    mov rdi,rbx
+    mov rsi,key_title
+    call strcmp
+    test rax,rax
+    jz .title
+    mov rdi,rbx
+    mov rsi,key_id
+    call strcmp
+    test rax,rax
+    jz .id
+    mov rdi,rbx
+    mov rsi,key_token
+    call strcmp
+    test rax,rax
+    jnz .bad
+    cmp qword [decode_stripped],0
+    jne .bad
+    test qword [form_flags],4
+    jnz .bad
+    or qword [form_flags],4
+    mov rdi,decode_buf
+    call strlen
+    cmp rax,32
+    jne .bad
+    mov rsi,decode_buf
+    mov rdi,form_token
+    mov ecx,33
+    rep movsb
+    jmp .next
+.id:
+    cmp qword [decode_stripped],0
+    jne .bad
+    test qword [form_flags],2
+    jnz .bad
+    or qword [form_flags],2
+    mov rdi,decode_buf
+    call parse_uint
+    test rax,rax
+    jle .bad
+    mov [form_id],rax
+    jmp .next
+.title:
+    test qword [form_flags],1
+    jnz .bad
+    or qword [form_flags],1
+    mov rbx,decode_buf
+.trim_start:
+    cmp byte [rbx],' '
+    jne .trim_end
+    inc rbx
+    jmp .trim_start
+.trim_end:
+    mov rdi,rbx
+    call strlen
+    test rax,rax
+    jz .invalid_title
+    lea rdi,[rbx+rax]
+.trim_loop:
+    cmp byte [rdi-1],' '
+    jne .trim_done
+    dec rdi
+    dec rax
+    jz .invalid_title
+    jmp .trim_loop
+.trim_done:
+    cmp rax,TITLE_MAX
+    ja .invalid_title
+    mov byte [rdi],0
+    mov rcx,rax
+    inc rcx
+    mov rsi,rbx
+    mov rdi,form_title
+    rep movsb
+.next:
+    mov rbx,r13
+    jmp .field
+.ok:
+    xor eax,eax
     jmp .done
-
+.invalid_title:
+    mov rax,-422
+    jmp .done
+.bad:
+    mov rax,-400
 .done:
     pop r13
     pop r12
     pop rbx
-    pop rbp
     ret
 
-; Extracts body pointer from rbx (request)
-; Returns rax = pointer or 0
-extract_body:
-    mov rsi, rbx
+new_session:
+    xor r10d,r10d
+.random:
+    mov eax,SYS_GETRANDOM
+    lea rdi,[random_buf+r10]
+    mov esi,16
+    sub rsi,r10
+    xor edx,edx
+    syscall
+    cmp rax,-4
+    je .random
+    test rax,rax
+    jle .bad
+    add r10,rax
+    cmp r10,16
+    jb .random
+    xor ecx,ecx
+.hex:
+    movzx eax,byte [random_buf+rcx]
+    mov edx,eax
+    shr eax,4
+    and edx,15
+    mov al,[hex_chars+rax]
+    mov dl,[hex_chars+rdx]
+    mov [current_uid+rcx*2],al
+    mov [current_uid+rcx*2+1],dl
+    inc ecx
+    cmp ecx,16
+    jb .hex
+    mov byte [current_uid+32],0
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-503
+    ret
+
+session_redirect:
+    mov rdi,extra_buf
+    mov rsi,session_prefix
+    call copy_string
+    mov rsi,current_uid
+    call copy_string
+    mov rsi,session_tail
+    call copy_string
+    mov byte [rdi],0
+    mov r9,extra_buf
+    jmp redirect
+redirect_app:
+    mov r9,app_location
+redirect:
+    mov rdi,r12
+    mov rsi,empty
+    xor edx,edx
+    mov rcx,see_other
+    mov r8,mime_text
+    jmp respond
+
+handle_request:
+    push rbx
+    push r12
+    push r13
+    mov r12,rdi
+    call parse_cookie
+    test rax,rax
+    js .error
+    cmp qword [request_method],2
+    je .write
+    cmp qword [request_method],1
+    je .read
+    cmp qword [request_method],3
+    jne .method
+.read:
+    mov rdi,request_path
+    mov rsi,path_0
+    call strcmp
+    test rax,rax
+    jz .get_home
+    mov rdi,request_path
+    mov rsi,path_1
+    call strcmp
+    test rax,rax
+    jz .get_app
+    mov rdi,request_path
+    mov rsi,path_2
+    call strcmp
+    test rax,rax
+    jz .get_css
+    mov rdi,request_path
+    mov rsi,path_3
+    call strcmp
+    test rax,rax
+    jz .get_js
+    mov rdi,request_path
+    mov rsi,path_4
+    call strcmp
+    test rax,rax
+    jz .get_robots
+    mov rdi,request_path
+    mov rsi,path_5
+    call strcmp
+    test rax,rax
+    jz .get_sitemap
+    mov rdi,request_path
+    mov rsi,path_6
+    call strcmp
+    test rax,rax
+    jz .get_favicon
+    mov rdi,request_path
+    mov rsi,path_7
+    call strcmp
+    test rax,rax
+    jz .get_health
+    mov rdi,request_path
+    mov rsi,legacy_prefix
+    mov edx,6
+    call strncmp
+    test rax,rax
+    jz .legacy
+    mov rdi,request_path
+    mov rsi,path_8
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_9
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_10
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_11
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_12
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_13
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_14
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_15
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,path_16
+    call strcmp
+    test rax,rax
+    jz .method
+    jmp .missing
+.write:
+    call check_origin
+    test rax,rax
+    js .error
+    call parse_form
+    test rax,rax
+    js .error
+    mov rdi,request_path
+    mov rsi,path_8
+    call strcmp
+    test rax,rax
+    jz .post_start
+    mov rdi,request_path
+    mov rsi,path_9
+    call strcmp
+    test rax,rax
+    jz .post_restore
+    mov rdi,request_path
+    mov rsi,path_10
+    call strcmp
+    test rax,rax
+    jz .post_forget
+    cmp byte [current_uid],0
+    je .unauthorized
+    mov rdi,request_path
+    mov rsi,path_11
+    call strcmp
+    test rax,rax
+    jz .post_add
+    mov rdi,request_path
+    mov rsi,path_12
+    call strcmp
+    test rax,rax
+    jz .post_complete
+    mov rdi,request_path
+    mov rsi,path_13
+    call strcmp
+    test rax,rax
+    jz .post_reopen
+    mov rdi,request_path
+    mov rsi,path_14
+    call strcmp
+    test rax,rax
+    jz .post_delete
+    mov rdi,request_path
+    mov rsi,path_15
+    call strcmp
+    test rax,rax
+    jz .post_edit
+    mov rdi,request_path
+    mov rsi,path_16
+    call strcmp
+    test rax,rax
+    jz .post_clear
+    jmp .missing
+.get_app:
+    cmp byte [current_uid],0
+    jne .load_app
+    mov r9,home_location
+    call redirect
+    jmp .done
+.load_app:
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    push rax
+    call unlock_user_file
+    pop rax
+    test rax,rax
+    js .error
+    call render_app
+    jmp .done
+.legacy:
+    ; Migration only: never silently replace a browser's existing workspace.
+    cmp byte [current_uid],0
+    jne .conflict
+    mov rdi,request_path+6
+    call copy_uid
+    test rax,rax
+    js .error
+    cmp qword [request_method],3
+    je .method
+    call session_redirect
+    jmp .done
+.post_start:
+    cmp qword [form_flags],0
+    jne .bad
+    cmp byte [current_uid],0
+    jne .start_ready
+    call new_session
+    test rax,rax
+    js .error
+.start_ready:
+    call session_redirect
+    jmp .done
+.post_restore:
+    cmp qword [form_flags],4
+    jne .bad
+    mov rdi,form_token
+    call copy_uid
+    test rax,rax
+    js .error
+    call session_redirect
+    jmp .done
+.post_forget:
+    cmp qword [form_flags],0
+    jne .bad
+    mov r9,forget_headers
+    call redirect
+    jmp .done
+.post_add:
+    cmp qword [form_flags],1
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,form_title
+    call append_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_complete:
+    cmp qword [form_flags],2
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    mov rsi,form_title
+    call complete_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_reopen:
+    cmp qword [form_flags],2
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    mov rsi,form_title
+    call reopen_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_delete:
+    cmp qword [form_flags],2
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    mov rsi,form_title
+    call delete_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_edit:
+    cmp qword [form_flags],3
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    mov rsi,form_title
+    call edit_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_clear:
+    cmp qword [form_flags],0
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    call clear_done_todos
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.get_home:
+    mov rdi,r12
+    mov rsi,home
+    mov edx,home_len
+    mov rcx,ok
+    mov r8,mime_html
+    mov r9,empty
+    call respond
+    jmp .done
+.get_css:
+    mov rdi,r12
+    mov rsi,css
+    mov edx,css_len
+    mov rcx,ok
+    mov r8,mime_css
+    mov r9,empty
+    call respond
+    jmp .done
+.get_js:
+    mov rdi,r12
+    mov rsi,js
+    mov edx,js_len
+    mov rcx,ok
+    mov r8,mime_js
+    mov r9,empty
+    call respond
+    jmp .done
+.get_robots:
+    mov rdi,r12
+    mov rsi,robots
+    mov edx,robots_len
+    mov rcx,ok
+    mov r8,mime_text
+    mov r9,empty
+    call respond
+    jmp .done
+.get_sitemap:
+    mov rdi,r12
+    mov rsi,sitemap
+    mov edx,sitemap_len
+    mov rcx,ok
+    mov r8,mime_xml
+    mov r9,empty
+    call respond
+    jmp .done
+.get_favicon:
+    mov rdi,r12
+    mov rsi,favicon
+    mov edx,favicon_len
+    mov rcx,ok
+    mov r8,mime_svg
+    mov r9,empty
+    call respond
+    jmp .done
+.get_health:
+    mov rdi,r12
+    mov rsi,health
+    mov edx,health_len
+    mov rcx,ok
+    mov r8,mime_json
+    mov r9,empty
+    call respond
+    jmp .done
+.unlock_error:
+    push rax
+    call unlock_user_file
+    pop rax
+    jmp .error
+.bad:
+    mov rax,-400
+    jmp .error
+.unauthorized:
+    mov rax,-401
+    jmp .error
+.missing:
+    mov rax,-404
+    jmp .error
+.method:
+    mov rax,-405
+    jmp .error
+.conflict:
+    mov rax,-409
+.error:
+    neg rax
+    mov rdi,rax
+    mov rsi,r12
+    call send_error
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; User text appears only in an HTML text node, never executable attributes.
+html_escape:
 .loop:
-    cmp byte [rsi], 0
-    je .not_found
-    cmp dword [rsi], 0x0a0d0a0d ; \r\n\r\n
-    je .found
-    inc rsi
-    jmp .loop
-.found:
-    add rsi, 4
-    mov rax, rsi
-    ret
-.not_found:
-    xor rax, rax
-    ret
-
-; Finds "title=" in string rdi, returns pointer to value
-find_title:
-    mov rsi, rdi
-.loop:
-    cmp byte [rsi], 0
-    je .not_found
-    cmp dword [rsi], 0x6c746974 ; "titl"
-    jne .next
-    cmp word [rsi+4], 0x3d65 ; "e="
-    jne .next
-    add rsi, 6
-    mov rax, rsi
-    ret
-.next:
-    inc rsi
-    jmp .loop
-.not_found:
-    xor rax, rax
-    ret
-
-; Finds "&id=" or "id=" at start of string
-; rdi = body ptr, returns rax = ptr to value or 0
-find_id:
-    mov rsi, rdi
-    ; First check if string starts with "id="
-    cmp word [rsi], 0x6469  ; "id"
-    jne .scan
-    cmp byte [rsi+2], '='
-    jne .scan
-    add rsi, 3
-    mov rax, rsi
-    ret
-.scan:
-.loop:
-    cmp byte [rsi], 0
-    je .not_found
-    ; look for '&' followed by "id="
-    cmp byte [rsi], '&'
-    jne .next
-    cmp word [rsi+1], 0x6469  ; "id"
-    jne .next
-    cmp byte [rsi+3], '='
-    jne .next
-    add rsi, 4
-    mov rax, rsi
-    ret
-.next:
-    inc rsi
-    jmp .loop
-.not_found:
-    xor rax, rax
-    ret
-
-; In-place URL decode: handles +, %XX, stops at & or \0
-; Strips \n (0x0A), \r (0x0D), | (0x7C) — prevents file format injection
-; rdi = ptr to value; rax = same ptr (decoded in-place)
-url_decode:
-    mov rsi, rdi    ; read ptr
-    ; rdi = write ptr (same start)
-    mov rax, rdi    ; return value
-.loop:
-    mov cl, [rsi]
-    test cl, cl
-    jz .end
-    cmp cl, '&'
-    je .end
-    cmp cl, '+'
-    je .plus
-    cmp cl, '%'
-    je .pct
-    ; strip file-format-breaking chars from raw input
-    cmp cl, 0x0A    ; LF
-    je .skip_raw
-    cmp cl, 0x0D    ; CR
-    je .skip_raw
-    cmp cl, '|'     ; file field separator
-    je .skip_raw
-    mov [rdi], cl
-    inc rsi
-    inc rdi
-    jmp .loop
-.skip_raw:
-    inc rsi
-    jmp .loop
-.plus:
-    mov byte [rdi], ' '
-    inc rsi
-    inc rdi
-    jmp .loop
-.pct:
-    inc rsi
-    movzx ecx, byte [rsi]
-    test cl, cl
-    jz .end
-    call hex_nibble
-    shl cl, 4
-    mov r9b, cl
-    inc rsi
-    movzx ecx, byte [rsi]
-    test cl, cl
-    jz .end
-    call hex_nibble
-    and cl, 0x0F
-    or cl, r9b
-    ; strip decoded control chars and file separator
-    cmp cl, 0x0A    ; LF
-    je .pct_skip
-    cmp cl, 0x0D    ; CR
-    je .pct_skip
-    cmp cl, '|'     ; file field separator
-    je .pct_skip
-    mov [rdi], cl
-    inc rsi
-    inc rdi
-    jmp .loop
-.pct_skip:
-    inc rsi         ; advance past 2nd hex digit, don't write
-    jmp .loop
-.end:
-    mov byte [rdi], 0
-    ret
-
-; cl = hex char ('0'-'9','a'-'f','A'-'F') → nibble in cl
-hex_nibble:
-    cmp cl, 'a'
-    jb .not_lower
-    sub cl, 87      ; 'a'(97) - 10 = 87
-    ret
-.not_lower:
-    cmp cl, 'A'
-    jb .is_digit
-    sub cl, 55      ; 'A'(65) - 10 = 55
-    ret
-.is_digit:
-    sub cl, '0'
-    ret
-
-; strcpy_html_escape: copy from rsi to rdi, escaping <>&" as HTML entities
-; updates rdi; clobbers al, rsi
-strcpy_html_escape:
-.loop:
-    mov al, [rsi]
-    test al, al
+    lodsb
+    test al,al
     jz .done
-    cmp al, '<'
-    je .lt
-    cmp al, '>'
-    je .gt
-    cmp al, '&'
+    cmp al,'&'
     je .amp
-    cmp al, '"'
+    cmp al,'<'
+    je .lt
+    cmp al,'>'
+    je .gt
+    cmp al,'"'
     je .quot
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .loop
-.lt:
-    mov byte [rdi],   '&'
-    mov byte [rdi+1], 'l'
-    mov byte [rdi+2], 't'
-    mov byte [rdi+3], ';'
-    add rdi, 4
-    inc rsi
-    jmp .loop
-.gt:
-    mov byte [rdi],   '&'
-    mov byte [rdi+1], 'g'
-    mov byte [rdi+2], 't'
-    mov byte [rdi+3], ';'
-    add rdi, 4
-    inc rsi
+    stosb
     jmp .loop
 .amp:
-    mov byte [rdi],   '&'
-    mov byte [rdi+1], 'a'
-    mov byte [rdi+2], 'm'
-    mov byte [rdi+3], 'p'
-    mov byte [rdi+4], ';'
-    add rdi, 5
-    inc rsi
+    mov dword [rdi],'&amp'
+    mov byte [rdi+4],';'
+    add rdi,5
+    jmp .loop
+.lt:
+    mov dword [rdi],'&lt;'
+    add rdi,4
+    jmp .loop
+.gt:
+    mov dword [rdi],'&gt;'
+    add rdi,4
     jmp .loop
 .quot:
-    mov byte [rdi],   '&'
-    mov byte [rdi+1], '#'
-    mov byte [rdi+2], '3'
-    mov byte [rdi+3], '4'
-    mov byte [rdi+4], ';'
-    add rdi, 5
-    inc rsi
+    mov dword [rdi],'&#34'
+    mov byte [rdi+4],';'
+    add rdi,5
     jmp .loop
 .done:
     ret
+emit_number:
+    push rdi
+    mov rdi,rax
+    mov rsi,number_buf
+    call itoa
+    pop rdi
+    mov rsi,number_buf
+    jmp copy_string
 
-; Render HTML and send to r12 (fd)
-send_html:
-    push rbp
-    mov rbp, rsp
+render_app:
     push rbx
     push r13
-
-    ; Build response body in res_buf (headers sent separately once the
-    ; body length is known, so Content-Length can be emitted)
-    mov rdi, res_buf
-
-    ; Header part 1 (CSS + uid-check script + form open + hidden uid field open)
-    mov rsi, html_header_1
-    call strcpy_fwd
-
-    ; Inject current_uid into the add form hidden field
-    mov rsi, current_uid
-    call strcpy_fwd
-
-    ; Header part 2 (rest of form + filter buttons + <ul>)
-    mov rsi, html_header_2
-    call strcpy_fwd
-
-    ; Loop todos
+    push r14
+    mov rdi,res_buf
+    mov rsi,app_head
+    call copy_string
     push rdi
     call get_todo_list
-    mov rbx, rax
+    mov rbx,rax
     pop rdi
-    mov r13, 1000
-
-.todo_loop:
-    mov rax, [rbx]
-    test rax, rax
-    jz .next_todo
-
-    mov cl, [rbx+8]
-    cmp cl, 2
-    je .next_todo
-
-    cmp cl, 1
-    je .li_is_done
-
-    mov rsi, li_active_1
-    call strcpy_fwd
-    jmp .emit_ts
-
-.li_is_done:
-    mov rsi, li_done_1
-    call strcpy_fwd
-
-.emit_ts:
-    push rdi
-    mov rdi, [rbx+9]
-    mov rsi, id_str
-    call itoa
-    pop rdi
-    mov rsi, id_str
-    call strcpy_fwd
-
-    mov cl, [rbx+8]
-    cmp cl, 1
-    je .li_part2_done
-
-    mov rsi, li_active_2
-    call strcpy_fwd
-    jmp .emit_title
-
-.li_part2_done:
-    mov rsi, li_done_2
-    call strcpy_fwd
-
-.emit_title:
-    mov rsi, rbx
-    add rsi, 17
-    call strcpy_html_escape
-
-    mov rsi, li_mid
-    call strcpy_fwd
-
-    ; Edit button (all visible items)
-    mov rsi, form_edit_open
-    call strcpy_fwd
-    mov rsi, current_uid
-    call strcpy_fwd
-    mov rsi, form_uid_id_bridge
-    call strcpy_fwd
-
-    push rdi
-    mov rdi, [rbx]
-    mov rsi, id_str
-    call itoa
-    pop rdi
-    mov rsi, id_str
-    call strcpy_fwd
-
-    mov rsi, form_edit_2
-    call strcpy_fwd
-
-    ; Complete button (active items only)
-    mov cl, [rbx+8]
-    cmp cl, 1
-    je .skip_done_btn
-
-    mov rsi, form_complete_open
-    call strcpy_fwd
-    mov rsi, current_uid
-    call strcpy_fwd
-    mov rsi, form_uid_id_bridge
-    call strcpy_fwd
-
-    push rdi
-    mov rdi, [rbx]
-    mov rsi, id_str
-    call itoa
-    pop rdi
-    mov rsi, id_str
-    call strcpy_fwd
-
-    mov rsi, form_complete_2
-    call strcpy_fwd
-
-.skip_done_btn:
-    mov rsi, form_delete_open
-    call strcpy_fwd
-    mov rsi, current_uid
-    call strcpy_fwd
-    mov rsi, form_uid_id_bridge
-    call strcpy_fwd
-
-    push rdi
-    mov rdi, [rbx]
-    mov rsi, id_str
-    call itoa
-    pop rdi
-    mov rsi, id_str
-    call strcpy_fwd
-
-    mov rsi, form_delete_2
-    call strcpy_fwd
-
-.next_todo:
-    add rbx, 128
+    mov r13d,TASK_MAX
+.loop:
+    cmp qword [rbx],0
+    je .next
+    cmp byte [rbx+8],2
+    je .next
+    mov rsi,li_open
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,li_ts
+    call copy_string
+    mov rax,[rbx+9]
+    call emit_number
+    mov rsi,li_active
+    cmp byte [rbx+8],1
+    jne .title
+    mov rsi,li_done
+.title:
+    call copy_string
+    lea rsi,[rbx+17]
+    call html_escape
+    mov rsi,li_actions
+    call copy_string
+    mov rsi,edit_open
+    call copy_string
+    mov rsi,complete_open
+    cmp byte [rbx+8],1
+    jne .action
+    mov rsi,reopen_open
+.action:
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,complete_close
+    cmp byte [rbx+8],1
+    jne .close_action
+    mov rsi,reopen_close
+.close_action:
+    call copy_string
+    mov rsi,delete_open
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,delete_close
+    call copy_string
+.next:
+    add rbx,128
     dec r13
-    jnz .todo_loop
-
-    ; Close the <ul>, then clear-done form (inside .wrap), then close wrap + script
-    mov rsi, html_footer_1
-    call strcpy_fwd
-
-    mov rsi, html_clear_done_open
-    call strcpy_fwd
-    mov rsi, current_uid
-    call strcpy_fwd
-    mov rsi, html_clear_done_close
-    call strcpy_fwd
-
-    mov rsi, html_footer_2
-    call strcpy_fwd
-
-    mov r13, rdi
-    sub r13, res_buf        ; body length
-
-    ; Build status line + headers with Content-Length
-    mov rdi, hdr_buf
-    mov rsi, http_200_pre
-    call strcpy_fwd
-    mov rsi, rdi            ; itoa target = current header end
-    mov rdi, r13
-    call itoa               ; rsi unchanged, rax = digit count
-    lea rdi, [rsi + rax]
-    mov rsi, http_200_post
-    call strcpy_fwd
-
-    mov rdx, rdi
-    sub rdx, hdr_buf
-    mov rsi, hdr_buf
-    mov rdi, r12
-    call write_all
-
-    mov rsi, res_buf
-    mov rdx, r13
-    mov rdi, r12
-    call write_all
-
+    jnz .loop
+    mov rsi,app_foot
+    call copy_string
+    mov rdx,rdi
+    sub rdx,res_buf
+    mov rdi,r12
+    mov rsi,res_buf
+    mov rcx,ok
+    mov r8,mime_html
+    mov r9,private_headers
+    call respond
+    pop r14
     pop r13
     pop rbx
-    pop rbp
     ret
-
-; strcpy_fwd: copy rsi to rdi, update rdi to end (null not written)
-strcpy_fwd:
-.loop:
-    mov al, [rsi]
-    test al, al
-    jz .done
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .loop
-.done:
-    ret
-
-; -----------------------------------------------------------------------------
-; find_uid_in_url - search first line of request (up to \r/\n/\0) for "uid="
-; rdi = request buffer
-; Returns rax = ptr to uid value, or 0
-; -----------------------------------------------------------------------------
-find_uid_in_url:
-    mov rsi, rdi
-.loop:
-    mov al, [rsi]
-    test al, al
-    jz .not_found
-    cmp al, 13
-    je .not_found
-    cmp al, 10
-    je .not_found
-    cmp dword [rsi], 0x3d646975  ; "uid="
-    je .found
-    inc rsi
-    jmp .loop
-.found:
-    lea rax, [rsi+4]
-    ret
-.not_found:
-    xor rax, rax
-    ret
-
-; -----------------------------------------------------------------------------
-; find_uid - search body (up to \0) for "uid="
-; rdi = body ptr
-; Returns rax = ptr to uid value, or 0
-; -----------------------------------------------------------------------------
-find_uid:
-    mov rsi, rdi
-.loop:
-    mov al, [rsi]
-    test al, al
-    jz .not_found
-    cmp dword [rsi], 0x3d646975  ; "uid="
-    je .found
-    inc rsi
-    jmp .loop
-.found:
-    lea rax, [rsi+4]
-    ret
-.not_found:
-    xor rax, rax
-    ret
-
-; -----------------------------------------------------------------------------
-; copy_uid - copies uid from rdi to current_uid (max 32 chars, hex [a-f0-9] only)
-; On invalid char: sets current_uid[0]=0 and returns
-; -----------------------------------------------------------------------------
-copy_uid:
-    mov rsi, rdi
-    mov rdi, current_uid
-    mov rcx, 32
-.loop:
-    test rcx, rcx
-    jz .null_term
-    mov al, [rsi]
-    ; validate: '0'-'9' or 'a'-'f'
-    cmp al, '0'
-    jb .invalid
-    cmp al, '9'
-    jbe .ok_char
-    cmp al, 'a'
-    jb .invalid
-    cmp al, 'f'
-    jbe .ok_char
-    ; not valid hex
-    jmp .invalid
-.ok_char:
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    dec rcx
-    jmp .loop
-.null_term:
-    mov byte [rdi], 0
-    ret
-.invalid:
-    mov byte [current_uid], 0
-    ret
+section .data
+    legacy_prefix db '/?uid=',0

@@ -1,778 +1,568 @@
 %include "src/defs.inc"
+DEFAULT ABS
+extern current_uid, parse_uint, itoa, strlen, write_all
 
-extern atoi
-extern strlen
-extern write_all
-extern current_uid      ; defined in router.asm (global resb 64)
-
-global init_storage
-global load_todos
-global append_todo
-global complete_todo
-global delete_todo
-global edit_todo
-global get_todo_list
-global get_todo_count
-global clear_done_todos
-global lock_user_file
-global unlock_user_file
-
+global init_storage, load_todos, append_todo, complete_todo, delete_todo
+ global edit_todo, get_todo_list, get_todo_count, clear_done_todos
+ global lock_user_file, unlock_user_file, reopen_todo
 section .data
-    todos_prefix db "data/todos-", 0
-    todos_suffix db ".txt", 0
+    data_dir db 'data',0
+    prefix db 'data/todos-',0
+    seq_prefix db '#next=',0
     next_id dq 1
-
+    lock_fd dq -1
 section .bss
-    ; 1000 tasks, each 128 bytes
-    ; [0-7] id (qword)
-    ; [8] completed (0=active, 1=done, 2=deleted)
-    ; [9-16] timestamp (qword, unaligned)
-    ; [17-127] title (null-terminated)
-    todos resb 128000
-    file_buf resb 262144    ; 256KB — fits 1000 slots × multiple operations
+    todos resb TASK_MAX*128
+    file_buf resb 262145+8
     todo_count resq 1
-    current_time resq 1
     todo_path resb 128
     tmp_path resb 136
     lock_path resb 136
-    lock_fd resq 1
-
+    line_buf resb 256
 section .text
-
-; -----------------------------------------------------------------------------
-; build_path - builds "data/todos-{uid}.txt" into todo_path
-; Returns rax=1 if path built, rax=0 if current_uid is empty
-; Clobbers: rdi, rsi, al
-; -----------------------------------------------------------------------------
-build_path:
-    cmp byte [current_uid], 0
-    je .empty
-    mov rdi, todo_path
-    mov rsi, todos_prefix
-.cp1:
-    mov al, [rsi]
-    test al, al
-    jz .cp2
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .cp1
-.cp2:
-    mov rsi, current_uid
-.cp3:
-    mov al, [rsi]
-    test al, al
-    jz .cp4
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .cp3
-.cp4:
-    mov rsi, todos_suffix
-.cp5:
-    mov al, [rsi]
-    mov [rdi], al   ; copies null terminator too
-    test al, al
-    jz .ok
-    inc rsi
-    inc rdi
-    jmp .cp5
-.ok:
-    mov rax, 1
-    ret
-.empty:
-    xor rax, rax
-    ret
-
-; -----------------------------------------------------------------------------
-; init_storage - no-op (data/ directory created by Makefile)
-; -----------------------------------------------------------------------------
 init_storage:
+    mov eax,SYS_MKDIR
+    mov rdi,data_dir
+    mov esi,0700o
+    syscall
+    test rax,rax
+    jns .ok
+    cmp rax,-17 ; EEXIST
+    jne .bad
+.ok:
+    mov eax,SYS_OPEN
+    mov rdi,data_dir
+    mov esi,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC
+    xor edx,edx
+    syscall
+    test rax,rax
+    js .bad
+    mov rdi,rax
+    mov eax,SYS_CLOSE
+    syscall
+    ret
+.bad:
+    mov rax,-500
     ret
 
-; -----------------------------------------------------------------------------
-; load_todos - Read user's file and populate todos array
-; Always zeroes array first; does nothing more if current_uid is empty
-; -----------------------------------------------------------------------------
-load_todos:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-    push r13
-    push r14
-    push r15
+; Fixed-size validated UID from router; every path stays inside private data/.
+build_path:
+    mov rdi,todo_path
+    mov rsi,prefix
+    mov ecx,11
+    rep movsb
+    mov rsi,current_uid
+    mov ecx,32
+    rep movsb
+    mov dword [rdi],'.txt'
+    mov byte [rdi+4],0
+    ret
 
-    ; Always clear todos array first (prevents cross-user data leaks)
-    mov rdi, todos
-    mov rcx, 128000
-    xor al, al
-    rep stosb
-    mov qword [todo_count], 0
-    mov qword [next_id], 1
-
-    ; Build path — bail out early if no uid
+lock_user_file:
     call build_path
-    test rax, rax
-    jz .done
-
-    ; Open todo_path
-    mov rax, SYS_OPEN
-    mov rdi, todo_path
-    mov rsi, O_RDONLY
-    mov rdx, 0
+    mov qword [lock_fd],-1
+    mov rsi,todo_path
+    mov rdi,lock_path
+    mov ecx,47
+    rep movsb
+    mov dword [rdi],'.loc'
+    mov word [rdi+4],'k'
+    mov eax,SYS_OPEN
+    mov rdi,lock_path
+    mov esi,O_CREAT|O_RDWR|O_NOFOLLOW|O_CLOEXEC
+    mov edx,0600o
     syscall
-    cmp rax, 0
-    jl .done
-    mov rbx, rax ; fd
-
-    ; Read into file_buf (up to 256KB)
-    mov rax, SYS_READ
-    mov rdi, rbx
-    mov rsi, file_buf
-    mov rdx, 262144
+    test rax,rax
+    js .bad
+    mov [lock_fd],rax
+.retry:
+    mov rdi,[lock_fd]
+    mov eax,SYS_FLOCK
+    mov esi,LOCK_EX
     syscall
-    mov r12, rax ; bytes read
-
-    ; Close file
-    mov rax, SYS_CLOSE
-    mov rdi, rbx
-    syscall
-
-    test r12, r12
-    jle .done
-
-    ; Parse buffer
-    mov rsi, file_buf
-    mov r13, 0 ; offset in buffer
-
-.parse_loop:
-    cmp r13, r12
-    jge .done
-
-    ; We are at start of a line: id|completed|timestamp|title\n
-    ; Find '|' for id
-    mov rdi, rsi
-    add rdi, r13
-    mov r14, rdi ; ptr to id str
-.find_pipe1:
-    cmp byte [rdi], '|'
-    je .found_pipe1
-    cmp byte [rdi], 0
-    je .done
-    cmp byte [rdi], 10 ; newline
-    je .skip_line
-    inc rdi
-    jmp .find_pipe1
-.found_pipe1:
-    mov byte [rdi], 0 ; null terminate id
-    inc rdi
-    mov r15, rdi ; ptr to completed str
-
-    ; Parse id
-    push rdi
-    push rsi
-    mov rdi, r14
-    call atoi
-    mov r8, rax ; id
-    pop rsi
-    pop rdi
-
-    ; Find '|' for completed
-.find_pipe2:
-    cmp byte [rdi], '|'
-    je .found_pipe2
-    cmp byte [rdi], 0
-    je .skip_line
-    cmp byte [rdi], 10
-    je .skip_line
-    inc rdi
-    jmp .find_pipe2
-.found_pipe2:
-    mov byte [rdi], 0
-    inc rdi
-    mov r9, rdi ; ptr to timestamp
-
-    ; Parse completed
-    push rdi
-    push rsi
-    mov rdi, r15
-    call atoi
-    mov r15, rax ; completed
-    pop rsi
-    pop rdi
-
-    ; Find '|' for timestamp
-.find_pipe3:
-    cmp byte [rdi], '|'
-    je .found_pipe3
-    cmp byte [rdi], 0
-    je .skip_line
-    cmp byte [rdi], 10
-    je .skip_line
-    inc rdi
-    jmp .find_pipe3
-.found_pipe3:
-    mov byte [rdi], 0
-    inc rdi
-    mov r10, rdi ; ptr to title
-
-    ; Parse timestamp
-    push rdi
-    push rsi
-    mov rdi, r9
-    call atoi
-    mov r9, rax ; timestamp
-    pop rsi
-    pop rdi
-
-    ; Find '\n' for title
-.find_nl:
-    cmp byte [rdi], 10
-    je .found_nl
-    cmp byte [rdi], 0
-    je .found_nl
-    inc rdi
-    jmp .find_nl
-.found_nl:
-    mov byte [rdi], 0
-    mov r11, rdi ; end of line
-    inc r11      ; next line start
-
-    ; Now we have: r8=id, r15=completed, r9=timestamp, r10=title_ptr
-    ; Find task in array or create new
-    ; Since array is small, just scan for matching id, or empty slot
-    mov rcx, 1000
-    mov rbx, todos
-.find_slot:
-    mov rax, [rbx] ; read id
-    cmp rax, r8
-    je .update_slot
-    test rax, rax
-    jz .new_slot
-    add rbx, 128
-    dec rcx
-    jnz .find_slot
-    jmp .next_line ; array full
-
-.new_slot:
-    inc qword [todo_count]
-.update_slot:
-    mov [rbx], r8 ; id
-    mov [rbx+8], r15b ; completed
-    mov [rbx+9], r9 ; timestamp
-    
-    ; copy title (use r10 directly to avoid clobbering rsi = file_buf base)
-    mov rdi, rbx
-    add rdi, 17
-    mov ecx, 110
-.copy_title:
-    mov al, [r10]
-    test al, al
-    jz .title_done
-    test ecx, ecx
-    jz .title_done
-    mov [rdi], al
-    inc r10
-    inc rdi
-    dec ecx
-    jmp .copy_title
-.title_done:
-    mov byte [rdi], 0
-
-    ; update next_id
-    mov rax, r8
-    inc rax
-    cmp rax, [next_id]
-    jle .next_line
-    mov [next_id], rax
-
-.next_line:
-    mov rax, r11
-    sub rax, file_buf
-    mov r13, rax
-    jmp .parse_loop
-
-.skip_line:
-    mov rax, rdi
-    sub rax, file_buf
-    inc rax
-    mov r13, rax
-    jmp .parse_loop
-
-.done:
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
-    pop rbp
+    cmp rax,-4
+    je .retry
+    test rax,rax
+    js .close_bad
+    xor eax,eax
+    ret
+.close_bad:
+    call unlock_user_file
+.bad:
+    mov rax,-503
     ret
 
-; -----------------------------------------------------------------------------
-; append_todo - Write to file
-; rdi: ptr to string to append
-; -----------------------------------------------------------------------------
-append_todo_file:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-
-    mov rbx, rdi    ; save string ptr before build_path clobbers rdi
-
-    call build_path
-    test rax, rax
-    jz .done        ; no uid — refuse to write
-
-    mov rax, SYS_OPEN
-    mov rdi, todo_path
-    mov rsi, O_WRONLY | O_APPEND | O_CREAT
-    mov rdx, 0600o
+unlock_user_file:
+    mov rdi,[lock_fd]
+    cmp rdi,0
+    jl .ok
+    mov qword [lock_fd],-1
+    mov eax,SYS_CLOSE
     syscall
-    cmp rax, 0
-    jl .done
-    mov r12, rax ; fd
-
-    mov rdi, rbx
-    call strlen
-    mov rdx, rax ; len
-
-    mov rax, SYS_WRITE
-    mov rdi, r12
-    mov rsi, rbx
-    syscall
-
-    mov rax, SYS_CLOSE
-    mov rdi, r12
-    syscall
-
-.done:
-    pop r12
-    pop rbx
-    pop rbp
+.ok:
+    xor eax,eax
     ret
 
-; We need a buffer to format lines
-section .bss
-    line_buf resb 512
-
-section .text
-extern itoa
-
-; rdi = id, rsi = completed, rdx = timestamp, rcx = title
-; Formats "id|completed|timestamp|title\n" into line_buf
-; Returns rax = line length (incl. newline, excl. null)
-format_line:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-    push r13
-    push r14
-    push r15
-
-    mov r12, rdi ; id
-    mov r13, rsi ; completed
-    mov r14, rdx ; timestamp
-    mov r15, rcx ; title
-
-    mov rdi, r12
-    mov rsi, line_buf
-    call itoa
-    
-    ; find end
-    mov rdi, line_buf
-    call strlen
-    mov rbx, line_buf
-    add rbx, rax
-    mov byte [rbx], '|'
-    inc rbx
-
-    mov rdi, r13
-    mov rsi, rbx
-    call itoa
-    mov rdi, rbx
-    call strlen
-    add rbx, rax
-    mov byte [rbx], '|'
-    inc rbx
-
-    mov rdi, r14
-    mov rsi, rbx
-    call itoa
-    mov rdi, rbx
-    call strlen
-    add rbx, rax
-    mov byte [rbx], '|'
-    inc rbx
-
-    ; copy title
-    mov rsi, r15
-.copy:
-    mov al, [rsi]
-    mov [rbx], al
-    test al, al
-    jz .done_copy
-    inc rsi
-    inc rbx
-    jmp .copy
-.done_copy:
-    mov byte [rbx], 10
-    mov byte [rbx+1], 0
-    lea rax, [rbx+1]
-    sub rax, line_buf
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
-    pop rbp
-    ret
-
-; rdi = id, rsi = completed, rdx = timestamp, rcx = title
-format_and_append:
-    push rbp
-    mov rbp, rsp
-    call format_line
-    mov rdi, line_buf
-    call append_todo_file
-    pop rbp
-    ret
-
-; -----------------------------------------------------------------------------
-; compact_todos - rewrite user's file from in-memory state, dropping deleted
-; records and superseded duplicates. Writes to todo_path + ".tmp" then
-; renames over the original, so a crash mid-write never loses the file.
-; Bounds append-log growth under the 256KB load cap.
-; -----------------------------------------------------------------------------
-compact_todos:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-    push r13
-
-    call build_path
-    test rax, rax
-    jz .done
-
-    ; tmp_path = todo_path + ".tmp"
-    mov rsi, todo_path
-    mov rdi, tmp_path
-.cp:
-    mov al, [rsi]
-    test al, al
-    jz .suffix
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .cp
-.suffix:
-    mov dword [rdi], '.tmp'
-    mov byte [rdi+4], 0
-
-    mov rax, SYS_OPEN
-    mov rdi, tmp_path
-    mov rsi, O_WRONLY | O_CREAT | O_TRUNC
-    mov rdx, 0600o
-    syscall
-    cmp rax, 0
-    jl .done
-    mov r12, rax ; fd
-
-    mov rbx, todos
-    mov r13, 1000
+; Find delimiter in a bounded, NUL-terminated line. Null terminates field.
+; rdi=start, dl=delimiter; rax=next field or zero.
+split_field:
+    mov rax,rdi
 .loop:
-    mov rax, [rbx]
-    test rax, rax
-    jz .next
-    cmp byte [rbx+8], 2 ; skip deleted
-    je .next
-    mov rdi, [rbx]
-    movzx rsi, byte [rbx+8]
-    mov rdx, [rbx+9]
-    lea rcx, [rbx+17]
-    call format_line
-    mov rdx, rax
-    mov rdi, r12
-    mov rsi, line_buf
-    call write_all
+    cmp byte [rax],0
+    je .bad
+    cmp byte [rax],dl
+    je .found
+    inc rax
+    jmp .loop
+.found:
+    mov byte [rax],0
+    inc rax
+    ret
+.bad:
+    xor eax,eax
+    ret
+
+; Read/replay legacy records, then compact on every successful mutation.
+; Invalid or oversized files are errors, never silently overwritten.
+load_todos:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rdi,todos
+    mov ecx,TASK_MAX*128
+    xor eax,eax
+    rep stosb
+    mov qword [todo_count],0
+    mov qword [next_id],1
+    call build_path
+    mov eax,SYS_OPEN
+    mov rdi,todo_path
+    mov esi,O_RDONLY|O_NOFOLLOW|O_CLOEXEC
+    xor edx,edx
+    syscall
+    cmp rax,-2
+    je .ok
+    test rax,rax
+    js .bad
+    mov rbx,rax
+    xor r12d,r12d
+.read:
+    mov eax,SYS_READ
+    mov rdi,rbx
+    lea rsi,[file_buf+r12]
+    mov edx,262145
+    sub rdx,r12
+    syscall
+    cmp rax,-4
+    je .read
+    test rax,rax
+    js .close_bad
+    jz .read_done
+    add r12,rax
+    cmp r12,262144
+    ja .close_bad
+    jmp .read
+.read_done:
+    mov eax,SYS_CLOSE
+    mov rdi,rbx
+    syscall
+    mov byte [file_buf+r12],0
+    xor r13d,r13d
+.record:
+    cmp r13,r12
+    jae .count
+    lea r14,[file_buf+r13]
+    mov r15,r14
+.find_nl:
+    mov rax,r15
+    sub rax,file_buf
+    cmp rax,r12
+    jae .bad ; a torn final record is not safe to overwrite
+    cmp byte [r15],0
+    je .bad
+    cmp byte [r15],10
+    je .line
+    inc r15
+    jmp .find_nl
+.line:
+    mov byte [r15],0
+    inc r15
+    cmp dword [r14],'#nex'
+    jne .fields
+    cmp word [r14+4],'t='
+    jne .bad
+    lea rdi,[r14+6]
+    call parse_uint
+    test rax,rax
+    jle .bad
+    cmp rax,[next_id]
+    jbe .next
+    mov [next_id],rax
+    jmp .next
+.fields:
+    mov rdi,r14
+    mov dl,'|'
+    call split_field
+    test rax,rax
+    jz .bad
+    mov rbx,rax
+    mov rdi,r14
+    call parse_uint
+    test rax,rax
+    jle .bad
+    mov r8,rax
+    mov rdi,rbx
+    mov dl,'|'
+    call split_field
+    test rax,rax
+    jz .bad
+    mov r14,rax
+    mov rdi,rbx
+    call parse_uint
+    cmp rax,2
+    ja .bad
+    mov r9,rax
+    mov rdi,r14
+    mov dl,'|'
+    call split_field
+    test rax,rax
+    jz .bad
+    mov rbx,rax
+    mov rdi,r14
+    call parse_uint
+    test rax,rax
+    js .bad
+    mov r10,rax
+    ; Reject format/control injection in stored records and overlong titles.
+    xor ecx,ecx
+.validate_title:
+    mov al,[rbx+rcx]
+    test al,al
+    jz .valid_title
+    cmp al,32
+    jb .bad
+    cmp al,127
+    je .bad
+    cmp al,'|'
+    je .bad
+    inc ecx
+    cmp ecx,TITLE_MAX
+    ja .bad
+    jmp .validate_title
+.valid_title:
+    mov rax,r8
+    inc rax
+    cmp rax,[next_id]
+    jbe .slot
+    mov [next_id],rax
+.slot:
+    mov rdi,todos
+    mov ecx,TASK_MAX
+.find_slot:
+    cmp [rdi],r8
+    je .update
+    cmp qword [rdi],0
+    je .update
+    add rdi,128
+    dec ecx
+    jnz .find_slot
+    jmp .bad ; legacy overflow must be recovered explicitly, never discarded
+.update:
+    mov [rdi],r8
+    mov [rdi+8],r9b
+    mov [rdi+9],r10
+    add rdi,17
+    mov rsi,rbx
+.copy:
+    lodsb
+    stosb
+    test al,al
+    jnz .copy
 .next:
-    add rbx, 128
+    mov r13,r15
+    sub r13,file_buf
+    jmp .record
+.count:
+    mov rdi,todos
+    mov ecx,TASK_MAX
+.count_loop:
+    cmp qword [rdi],0
+    je .count_next
+    cmp byte [rdi+8],2
+    je .count_next
+    inc qword [todo_count]
+.count_next:
+    add rdi,128
+    dec ecx
+    jnz .count_loop
+.ok:
+    xor eax,eax
+    jmp .done
+.close_bad:
+    mov eax,SYS_CLOSE
+    mov rdi,rbx
+    syscall
+.bad:
+    mov rax,-500
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; Format one in-memory slot (rdi) into line_buf. rax=length.
+format_line:
+    push rbx
+    mov rbx,rdi
+    mov rdi,[rbx]
+    mov rsi,line_buf
+    call itoa
+    lea rsi,[line_buf+rax]
+    mov byte [rsi],'|'
+    inc rsi
+    movzx edi,byte [rbx+8]
+    call itoa
+    add rsi,rax
+    mov byte [rsi],'|'
+    inc rsi
+    mov rdi,[rbx+9]
+    call itoa
+    add rsi,rax
+    mov byte [rsi],'|'
+    lea rdi,[rsi+1]
+    lea rsi,[rbx+17]
+.copy:
+    lodsb
+    test al,al
+    jz .end
+    stosb
+    jmp .copy
+.end:
+    mov byte [rdi],10
+    lea rax,[rdi+1]
+    sub rax,line_buf
+    pop rbx
+    ret
+
+; Commit a bounded full snapshot. Never replace valid data after write/fsync error.
+; Directory fsync makes the rename durable. 507 indicates failure, not success.
+save_snapshot:
+    push rbx
+    push r12
+    push r13
+    call build_path
+    mov rsi,todo_path
+    mov rdi,tmp_path
+    mov ecx,47
+    rep movsb
+    mov dword [rdi],'.tmp'
+    mov byte [rdi+4],0
+    mov eax,SYS_OPEN
+    mov rdi,tmp_path
+    mov esi,O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW|O_CLOEXEC
+    mov edx,0600o
+    syscall
+    test rax,rax
+    js .bad
+    mov r12,rax
+    mov rdi,line_buf
+    mov rsi,seq_prefix
+    mov ecx,6
+    rep movsb
+    mov rsi,rdi
+    mov rdi,[next_id]
+    call itoa
+    add rsi,rax
+    mov byte [rsi],10
+    lea rdx,[rsi+1]
+    sub rdx,line_buf
+    mov rsi,line_buf
+    mov rdi,r12
+    call write_all
+    test rax,rax
+    js .close_bad
+    mov rbx,todos
+    mov r13d,TASK_MAX
+.loop:
+    cmp qword [rbx],0
+    je .next
+    cmp byte [rbx+8],2
+    je .next
+    mov rdi,rbx
+    call format_line
+    mov rdx,rax
+    mov rsi,line_buf
+    mov rdi,r12
+    call write_all
+    test rax,rax
+    js .close_bad
+.next:
+    add rbx,128
     dec r13
     jnz .loop
-
-    mov rax, SYS_CLOSE
-    mov rdi, r12
+    mov eax,SYS_FSYNC
+    mov rdi,r12
     syscall
-
-    mov rax, SYS_RENAME
-    mov rdi, tmp_path
-    mov rsi, todo_path
+    test rax,rax
+    js .close_bad
+    mov eax,SYS_CLOSE
+    mov rdi,r12
     syscall
-
+    test rax,rax
+    js .bad
+    mov eax,SYS_RENAME
+    mov rdi,tmp_path
+    mov rsi,todo_path
+    syscall
+    test rax,rax
+    js .bad
+    mov eax,SYS_OPEN
+    mov rdi,data_dir
+    mov esi,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC
+    xor edx,edx
+    syscall
+    test rax,rax
+    js .bad
+    mov r12,rax
+    mov eax,SYS_FSYNC
+    mov rdi,r12
+    syscall
+    mov rbx,rax
+    mov eax,SYS_CLOSE
+    mov rdi,r12
+    syscall
+    test rbx,rbx
+    js .bad
+    xor eax,eax
+    jmp .done
+.close_bad:
+    mov eax,SYS_CLOSE
+    mov rdi,r12
+    syscall
+.bad:
+    mov rax,-507
 .done:
     pop r13
     pop r12
     pop rbx
-    pop rbp
     ret
 
-; rdi = title
 append_todo:
-    push rbp
-    mov rbp, rsp
     push rbx
-
-    mov rbx, rdi ; title
-
-    ; get time
-    mov rax, SYS_TIME
-    mov rdi, current_time
-    syscall
-    mov rdx, [current_time]
-
-    mov rdi, [next_id]
-    mov rsi, 0
-    mov rcx, rbx
-    call format_and_append
-
-    call load_todos
-
-    pop rbx
-    pop rbp
-    ret
-
-; rdi = id
-complete_todo:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    mov rbx, rdi
-
-    ; reject id=0 (would match empty array slots)
-    test rbx, rbx
-    jz .done
-    
-    ; find title from memory
-    mov rcx, 1000
-    mov rsi, todos
+    mov rbx,rdi
+    cmp qword [todo_count],TASK_MAX
+    jae .full
+    mov rax,9223372036854775807
+    cmp [next_id],rax
+    jae .full
+    mov r8,todos
+    mov ecx,TASK_MAX
 .find:
-    mov rax, [rsi]
-    cmp rax, rbx
+    cmp qword [r8],0
     je .found
-    add rsi, 128
-    dec rcx
-    jnz .find
-    jmp .done
-
-.found:
-    mov rdi, rbx ; id
-    mov r8, 1 ; completed
-    mov rdx, [rsi+9] ; timestamp
-    add rsi, 17 ; title
-    mov rcx, rsi
-    mov rsi, r8
-    call format_and_append
-    call load_todos
-    call compact_todos
-    call load_todos
-
-.done:
-    pop rbx
-    pop rbp
-    ret
-
-; rdi = id
-delete_todo:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    mov rbx, rdi
-
-    ; reject id=0 (would match empty array slots)
-    test rbx, rbx
-    jz .done
-    
-    ; find title
-    mov rcx, 1000
-    mov rsi, todos
-.find:
-    mov rax, [rsi]
-    cmp rax, rbx
+    cmp byte [r8+8],2
     je .found
-    add rsi, 128
-    dec rcx
+    add r8,128
+    dec ecx
     jnz .find
-    jmp .done
-
+    jmp .full
 .found:
-    mov rdi, rbx ; id
-    mov r8, 2 ; deleted
-    mov rdx, [rsi+9] ; timestamp
-    add rsi, 17 ; title
-    mov rcx, rsi
-    mov rsi, r8
-    call format_and_append
-    call load_todos
-    call compact_todos
-    call load_todos
-
-.done:
+    mov rax,[next_id]
+    mov [r8],rax
+    inc qword [next_id]
+    mov byte [r8+8],0
+    mov eax,SYS_TIME
+    xor edi,edi
+    syscall
+    mov [r8+9],rax
+    lea rdi,[r8+17]
+    mov rsi,rbx
+.copy:
+    lodsb
+    stosb
+    test al,al
+    jnz .copy
+    call save_snapshot
     pop rbx
-    pop rbp
     ret
-
-; -----------------------------------------------------------------------------
-; lock_user_file - take an exclusive flock on data/todos-{uid}.txt.lock
-; Serializes load/append/compact for one user across forked children.
-; The lock file is never renamed (compaction replaces the data file's
-; inode, which would break flock on it), so its inode is stable.
-; No-op when current_uid is empty.
-; -----------------------------------------------------------------------------
-lock_user_file:
-    mov qword [lock_fd], -1
-    call build_path
-    test rax, rax
-    jz .done
-
-    ; lock_path = todo_path + ".lock"
-    mov rsi, todo_path
-    mov rdi, lock_path
-.cp:
-    mov al, [rsi]
-    test al, al
-    jz .sfx
-    mov [rdi], al
-    inc rsi
-    inc rdi
-    jmp .cp
-.sfx:
-    mov dword [rdi], '.loc'
-    mov word [rdi+4], 'k'   ; writes 'k', 0
-
-    mov rax, SYS_OPEN
-    mov rdi, lock_path
-    mov rsi, O_CREAT | O_RDWR
-    mov rdx, 0600o
-    syscall
-    cmp rax, 0
-    jl .done
-    mov [lock_fd], rax
-
-    mov rdi, rax
-    mov rax, SYS_FLOCK
-    mov rsi, LOCK_EX
-    syscall
-.done:
-    ret
-
-; -----------------------------------------------------------------------------
-; unlock_user_file - release the per-user lock (close drops the flock)
-; -----------------------------------------------------------------------------
-unlock_user_file:
-    mov rdi, [lock_fd]
-    cmp rdi, 0
-    jl .done
-    mov rax, SYS_CLOSE
-    syscall
-    mov qword [lock_fd], -1
-.done:
-    ret
-
-; -----------------------------------------------------------------------------
-; edit_todo - replace a todo's title, keeping id/status/timestamp
-; rdi = id, rsi = new title (already decoded and truncated)
-; -----------------------------------------------------------------------------
-edit_todo:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-    mov rbx, rdi
-    mov r12, rsi
-
-    ; reject id=0 (would match empty array slots)
-    test rbx, rbx
-    jz .done
-
-    mov rcx, 1000
-    mov rsi, todos
-.find:
-    mov rax, [rsi]
-    cmp rax, rbx
-    je .found
-    add rsi, 128
-    dec rcx
-    jnz .find
-    jmp .done
-
-.found:
-    cmp byte [rsi+8], 2 ; deleted records can't be edited
-    je .done
-    mov rdi, rbx            ; id
-    mov rdx, [rsi+9]        ; keep timestamp
-    movzx rsi, byte [rsi+8] ; keep completed status
-    mov rcx, r12            ; new title
-    call format_and_append
-    call load_todos
-    call compact_todos
-    call load_todos
-
-.done:
-    pop r12
+.full:
+    mov rax,-409
     pop rbx
-    pop rbp
     ret
 
-get_todo_list:
-    mov rax, todos
-    ret
-
-get_todo_count:
-    mov rax, [todo_count]
-    ret
-
-; -----------------------------------------------------------------------------
-; clear_done_todos - append delete records for all completed todos, then reload
-; -----------------------------------------------------------------------------
-clear_done_todos:
-    push rbp
-    mov rbp, rsp
-    push rbx
-    push r12
-
-    mov rbx, todos
-    mov r12, 1000
-
+; rdi=id -> rax=slot, or zero. Preserves rsi (edit title).
+find_todo:
+    test rdi,rdi
+    jz .missing
+    mov rax,todos
+    mov ecx,TASK_MAX
 .loop:
-    mov rax, [rbx]      ; id
-    test rax, rax
-    jz .next
-
-    mov cl, [rbx+8]
-    cmp cl, 1           ; only completed (not already deleted)
-    jne .next
-
-    mov rdi, [rbx]      ; id
-    mov rsi, 2          ; mark deleted
-    mov rdx, [rbx+9]    ; timestamp (unaligned read ok on x86-64)
-    lea rcx, [rbx+17]   ; title ptr
-    call format_and_append  ; writes to file, does NOT call load_todos
-
-.next:
-    add rbx, 128
-    dec r12
+    cmp [rax],rdi
+    je .found
+    add rax,128
+    dec ecx
     jnz .loop
-
-    call load_todos     ; single reload after all deletes
-    call compact_todos
-    call load_todos
-
-    pop r12
-    pop rbx
-    pop rbp
+.missing:
+    xor eax,eax
+    ret
+.found:
+    cmp byte [rax+8],2
+    je .missing
     ret
 
+complete_todo:
+    call find_todo
+    test rax,rax
+    jz missing_todo
+    mov byte [rax+8],1
+    jmp save_snapshot
+reopen_todo:
+    call find_todo
+    test rax,rax
+    jz missing_todo
+    mov byte [rax+8],0
+    jmp save_snapshot
+delete_todo:
+    call find_todo
+    test rax,rax
+    jz missing_todo
+    mov byte [rax+8],2
+    jmp save_snapshot
+edit_todo:
+    push rsi
+    call find_todo
+    pop rsi
+    test rax,rax
+    jz missing_todo
+    lea rdi,[rax+17]
+.copy:
+    lodsb
+    stosb
+    test al,al
+    jnz .copy
+    jmp save_snapshot
+missing_todo:
+    mov rax,-404
+    ret
+clear_done_todos:
+    mov rdi,todos
+    mov ecx,TASK_MAX
+.loop:
+    cmp byte [rdi+8],1
+    jne .next
+    mov byte [rdi+8],2
+.next:
+    add rdi,128
+    dec ecx
+    jnz .loop
+    jmp save_snapshot
+get_todo_list:
+    mov rax,todos
+    ret
+get_todo_count:
+    mov rax,[todo_count]
+    ret

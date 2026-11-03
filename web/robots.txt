@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /app
+Disallow: /export
+Sitemap: https://asm.micutu.com/sitemap.xml
