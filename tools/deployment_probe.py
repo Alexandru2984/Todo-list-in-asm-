@@ -45,6 +45,8 @@ def probe(base, cleanup_data=None):
         assert status == 200 and b'Release verification' in body, 'Workspace read failed'
         assert token.encode() not in body and 'noindex' in headers['X-Robots-Tag'], 'Private-page policy failed'
         assert 'unsafe-inline' not in headers['Content-Security-Policy'], 'CSP failed'
+        assert 'no-transform' in headers['Cache-Control'], 'Edge transformation policy failed'
+        assert b'challenge-platform' not in body and b'static.cloudflareinsights.com' not in body, 'Unexpected edge script injection'
         for path, data in [('/complete', {'id': '1'}), ('/reopen', {'id': '1'}),
                            ('/edit', {'id': '1', 'title': 'Verified'}), ('/delete', {'id': '1'})]:
             assert request('POST', path, data)[0] == 303, f'{path} failed'

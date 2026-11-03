@@ -201,6 +201,8 @@ class SecurityTests(unittest.TestCase):
                 self.assertEqual(int(headers['Content-Length']), len(body))
                 self.assertTrue(headers['Content-Type'].startswith(mime))
                 self.assertEqual(headers['Referrer-Policy'], 'strict-origin')
+                self.assertIn('no-store', headers['Cache-Control'])
+                self.assertIn('no-transform', headers['Cache-Control'])
                 self.assertEqual(headers['X-Frame-Options'], 'DENY')
                 self.assertNotIn('unsafe-inline', headers['Content-Security-Policy'])
                 hs, hh, hb = self.server.request('HEAD', route)

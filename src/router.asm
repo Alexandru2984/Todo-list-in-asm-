@@ -10,7 +10,7 @@ global handle_request, current_uid, send_error
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
     see_other db 'HTTP/1.1 303 See Other',13,10,0
-    common_headers db "Cache-Control: no-store",13,10
+    common_headers db "Cache-Control: no-store, no-transform",13,10
         db "X-Content-Type-Options: nosniff",13,10
         db "Referrer-Policy: strict-origin",13,10
         db "X-Frame-Options: DENY",13,10

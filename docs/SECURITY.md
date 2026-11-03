@@ -39,3 +39,11 @@ Production requires TLS, query-free access logging, strict-origin referrers, str
 caching for workspace responses, no task analytics, and an external backup and
 monitoring policy. The app returns explicit security headers even without nginx.
 See RUNBOOK.md and RELEASE.md for operational details and verification.
+
+`Cache-Control: no-store, no-transform` prevents Cloudflare's automatic HTML
+analytics/JavaScript Detection injection on these responses, so the strict CSP
+does not need inline exceptions. This does not disable the edge's network-layer
+security, rate limits or challenge rules. Existing WAF rules that explicitly
+require JavaScript Detection results must be reviewed by the zone operator.
+Cloudflare documents this behavior in its [Web Analytics FAQ](https://developers.cloudflare.com/web-analytics/faq/)
+and [JavaScript Detections reference](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/).
