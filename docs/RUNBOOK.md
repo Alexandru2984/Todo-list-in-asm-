@@ -9,7 +9,9 @@
   Existing Cloudflare routing remains managed outside this repository.
 - Nginx templates: `deploy/asm.nginx.conf`, `asm-proxy.conf`, `asm-limits.conf`.
 - Backup timer: `asm-backup.timer`, daily around 03:17 UTC, local 14-day retention.
-- Private snapshots: `/var/backups/asm-todo/asm-todo-*.tar.gz`.
+- Native private snapshots: `/var/backups/asm-todo/asm-todo-EPOCH-RANDOM.tar`.
+- Backup executable: `/srv/canary/asm.micutu.com/app/bin/backup`, raw NASM + syscalls.
+- Older `.tar.gz` snapshots remain intact for compatibility.
 - Deployment rollback snapshots: `/var/backups/asm-todo/releases/<UTC timestamp>`.
 
 The pre-migration repository `data/` stays untouched as a private historical
@@ -26,7 +28,9 @@ Run `sudo ./deploy/apply.sh`. The script verifies the build is current, backs up
 the current binary/config, validates nginx, stops only ASM, copies the quiescent
 data, migrates to the dedicated identity, atomically replaces the binary and
 runs fresh-workspace lifecycle probes locally and over public HTTPS. It then
-creates a verified backup and enables the backup timer. It never reloads the
+installs the native backup binary, creates a verified backup and enables the
+backup timer. It pauses the ASM backup job/timer during this switch and restores
+it on rollback. It never reloads the
 Cloudflare tunnel or restarts unrelated applications. Nginx reload is graceful.
 The initial migration can briefly interrupt ASM requests; clients should reload.
 
@@ -67,12 +71,17 @@ Do not claim that historical or edge copies of keys have been erased.
 ```sh
 sudo systemctl start asm-backup.service
 sudo journalctl -u asm-backup.service -n 10 --no-pager
-sudo python3 tools/backup.py --verify /var/backups/asm-todo/ARCHIVE.tar.gz
+sudo ./bin/backup --verify /var/backups/asm-todo/asm-todo-EPOCH-RANDOM.tar
 ```
 
 Only complete record snapshots enter archives; lock/tmp files are excluded.
-The verifier checks member types/names, size limits and SHA-256 manifests without
-extracting files. Archives are root-private, mode 0600. Local backups do not
+The native verifier checks member types/names, safe permissions, duplicates, size
+limits, header checksums and SHA-256 manifests without extracting files. It rejects
+links, prefixes, nonzero padding, truncation and trailing payloads. Archives are root-private, mode 0600. Native archives are uncompressed USTAR files readable by standard TAR tools;
+`SHA256SUMS` is the manifest. Retention removes only old native archive names after
+a new verified archive is published. Old `.tar.gz` archives are not deleted by
+the native utility; verify those with `sudo python3 tools/backup.py --verify FILE`
+and manage their finite retention deliberately. Local backups do not
 protect against VPS loss. Configure encrypted off-host copies and a separate
 retention policy before promising disaster recovery. Release snapshots are not
 automatically pruned; monitor their size and retain/delete deliberately.
@@ -85,7 +94,7 @@ archive rejection are also covered in the automated tests.
 ## Restore live data (operator decision)
 
 Stop ASM, preserve the current data directory as another private snapshot, verify
-the selected backup, restore only verified `todos-*.txt` members into a fresh
+the selected backup, restore only verified `todos-*.txt` members (exclude `SHA256SUMS`) into a fresh
 0700 `/var/lib/asm-todo/data`, set owner `asm-todo:asm-todo` and file mode 0600,
 then start ASM and probe health/a fresh test workspace. Preserve the displaced
 data for investigation. A restore rolls back user changes after the snapshot.

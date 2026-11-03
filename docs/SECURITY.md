@@ -47,3 +47,17 @@ security, rate limits or challenge rules. Existing WAF rules that explicitly
 require JavaScript Detection results must be reviewed by the zone operator.
 Cloudflare documents this behavior in its [Web Analytics FAQ](https://developers.cloudflare.com/web-analytics/faq/)
 and [JavaScript Detections reference](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/).
+
+The complete task workflow is now server-rendered in NASM: query validation,
+Unicode search, merge sorting, counts, progress, edit/confirmation pages and
+JSON/CSV downloads. Normal operation does not depend on JavaScript. Server-side
+failed-save pages preserve validated drafts as escaped form values.
+
+Scheduled backups also use a static NASM executable, with SHA-256 per-file
+integrity, private USTAR archives, checked writes/fsync/no-replace rename and
+14-day retention in its own filename namespace. It refuses symlinks, hardlinks,
+FIFOs and unsafe archive members. The process disables core dumps and its systemd
+unit has a syscall allowlist, no network and only the read-search capability
+needed to read private ASM-owned state. Integrity hashes are not signatures or
+encryption. The utility verifies its own strict USTAR profile; legacy compressed
+archives use the retained compatibility verifier.

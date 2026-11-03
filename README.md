@@ -9,10 +9,14 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 
 ## What works
 
-- Add, edit, complete, reopen, delete and clear completed tasks.
-- Search, All/Active/Done filters, four sort orders and progress indicators.
-- Light/dark themes, keyboard shortcuts (`N` and `/`), desktop focus timer.
-- JSON and spreadsheet-safe CSV exports; explicit recovery-key download.
+- Add, edit, duplicate, complete, reopen, delete and clear completed tasks.
+- Search, All/Active/Done filters, four sort orders and progress indicators,
+  computed on the server in ASM. The complete task workflow works without JavaScript.
+- Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
+  immediate input feedback and a desktop focus timer. It does not select, sort,
+  count, edit or export tasks.
+- JSON and spreadsheet-safe CSV exports generated in ASM, with native UTC
+  calendar formatting; explicit recovery-key download.
 - Responsive layouts checked from 320 to 1440 px; accessible native dialogs,
   keyboard controls, status announcements and reduced-motion preferences.
 - Public landing page, canonical/social metadata, a share preview, robots and
@@ -31,7 +35,7 @@ privately before clearing cookies. Exports of tasks do not contain the key.
 Linux x86_64, NASM, binutils/ld and make are required.
 
 ```sh
-make                 # build/server; never overwrites the production binary
+make                 # build/server + build/backup; never overwrites the production binary
 make run             # local data/ and 127.0.0.1:34624
 ./build/server 8080   # choose a port; conflicts fail instead of scanning
 ```
@@ -67,6 +71,22 @@ No deploy or secrets are available to the workflow.
 Automated axe checks cover WCAG A/AA rules that the tool can assess. They are not
 a certification or a substitute for manual assistive-technology testing.
 
+## Native backup
+
+The scheduled job runs `bin/backup`, compiled from NASM with `ld` alone. It pins
+complete task snapshots by fd, generates an uncompressed USTAR archive plus a
+SHA-256 manifest, verifies it, then publishes with no-replace atomic rename and
+fsync. Private native archives have 14-day retention. No Python, Node, shell,
+`tar` or `sha256sum` process is used by the backup executable.
+
+```sh
+./build/backup /path/to/data /path/to/private-backups
+./build/backup --verify /path/to/private-backups/asm-todo-EPOCH-RANDOM.tar
+```
+
+Python remains for development checks and old `.tar.gz` archive compatibility;
+Playwright remains a development-only browser test tool. See [project rules](AGENTS.md).
+
 ## Architecture
 
 | File | Purpose |
@@ -74,11 +94,16 @@ a certification or a substitute for manual assistive-technology testing.
 | `src/main.asm` | Loopback socket, bounded child lifetime, fork-per-connection lifecycle |
 | `src/http.asm` | Bounded HTTP line, header and body validation |
 | `src/router.asm` | Routing, sessions, same-origin checks, forms, escaping and rendering |
+| `src/view.asm` | Native query parser, Unicode search, bounded merge sort and statistics |
+| `src/template.asm` | Native HTML interpolation and edit/confirmation forms |
+| `src/export.asm` | Native JSON/CSV serialization and formula protection |
+| `native/backup.asm` | Native TAR snapshots, verification, atomic publication and retention |
+| `native/sha256.asm` | Native SHA-256 integrity implementation |
 | `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
 | `src/utils.asm` | Complete writes, strict decimal parsing, UTF-8 validation and strings |
 | `web/` | Assets embedded into the binary at build time; no separate asset server |
 | `deploy/` | Reviewed systemd/nginx configurations and deployment procedure |
-| `tools/backup.py` | Private verified local archives; no external upload |
+| `tools/backup.py` | Legacy .tar.gz compatibility/rollback tool; no scheduled use |
 
 Snapshots retain the existing `id|status|timestamp|title` record format. A new
 `#next=N` header preserves IDs across deletions. Status is 0 active, 1 complete;

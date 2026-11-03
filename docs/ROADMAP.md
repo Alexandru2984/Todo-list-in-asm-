@@ -14,6 +14,17 @@ Delivered on 2026-11-03. See [release verification](RELEASE.md) for checks and l
 6. Isolated protocol/storage tests; desktop/mobile browser checks; least-privilege CI.
 7. Scoped production deployment with backup, health checks and rollback instructions.
 
+## Release 2 — ASM first
+
+Delivered: native JSON/CSV export and UTC dates; server-side search, filters,
+merge sorting, statistics, progress, editing and confirmations; task duplication;
+complete no-JavaScript workspace; native NASM backup/SHA-256 utility and timer.
+HTML/CSS present the result. Browser JavaScript is optional convenience only.
+Python/Playwright remain development or legacy verification tools.
+
+All subsequent task/storage/backup features should follow the same NASM-first
+constraint; no framework or interpreter backend should be introduced.
+
 ## Next — richer organization
 
 - Priority and due dates, overdue view, tags/projects, subtasks and recurring tasks.
@@ -28,7 +39,8 @@ Delivered on 2026-11-03. See [release verification](RELEASE.md) for checks and l
 
 - Optional passkey accounts, recovery and multiple devices, session revocation.
 - Explicit sharing roles, expiring invitations and audit trail.
-- Dedicated Unix identity, filesystem quota, off-host encrypted backups with restore drills.
+- Global filesystem quota, off-host encrypted backups and additional restore drills.
+  The dedicated Unix identity and local restore drills are already delivered.
 - Bounded worker model, benchmarked limits, resource telemetry and abuse controls.
 - Data retention/deletion controls, accessibility audit and privacy policy review.
 
