@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 
+global find_todo, duplicate_todo
 global init_storage, load_todos, append_todo, complete_todo, delete_todo
  global edit_todo, get_todo_list, get_todo_count, clear_done_todos
  global lock_user_file, unlock_user_file, reopen_todo
@@ -573,3 +574,11 @@ get_todo_list:
 get_todo_count:
     mov rax,[todo_count]
     ret
+
+; Duplicate a live task as a fresh active item; append_todo owns capacity/commit.
+duplicate_todo:
+    call find_todo
+    test rax,rax
+    jz missing_todo
+    lea rdi,[rax+17]
+    jmp append_todo

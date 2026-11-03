@@ -7,6 +7,9 @@ extern request_method, request_path, request_body
 extern request_cookie, request_origin, request_host, request_site
 
 global handle_request, current_uid, send_error, copy_string, html_escape, emit_number
+global decode_value, decode_buf, decode_stripped
+extern parse_view, build_view, render_template, view_rows, view_count, format_utc
+extern duplicate_todo
 extern export_json, export_csv
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
@@ -52,6 +55,12 @@ section .data
     social_len equ $-social
     recovery_path db '/recovery',0
     recovery_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-workspace-key.txt"',13,10,0
+    draft_open db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Draft preserved — ASM TODO</title><link rel="stylesheet" href="/app.css"></head><body><main class="native-action"><h1>Changes could not be saved</h1><p>Saving failed. Your draft is preserved below. Check the workspace before retrying an interrupted change.</p><form method="post" action="',0
+    draft_add db '/add',0
+    draft_edit db '/edit',0
+    draft_id db '"><input type="hidden" name="id" value="',0
+    draft_title db '"><label for="new-title">Task title</label><input id="new-title" name="title" required maxlength="110" value="',0
+    draft_close db '"><div class="dialog-actions"><a class="secondary-button" href="/app">Check workspace</a><button class="primary-button">Try again</button></div></form></main></body></html>',0
     key_title db 'title',0
     key_id db 'id',0
     key_token db 'token',0
@@ -80,7 +89,14 @@ section .data
     li_ts db '" data-ts="',0
     li_active db '" data-done="0"><div class="task-copy"><span class="task-title">',0
     li_done db '" data-done="1" class="done"><div class="task-copy"><span class="task-title">',0
-    li_actions db '</span><time class="task-date"></time></div><div class="task-actions">',0
+    li_actions db '</time></div><div class="task-actions">',0
+    li_date db '</span><time class="task-date">',0
+    menu_open db '<details class="task-menu"><summary aria-label="More task actions">&#8943;</summary><div class="task-menu-items"><a data-edit href="/app?edit=',0
+    menu_edit_end db '#action-form">Edit</a><form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
+    menu_duplicate_end db '"><button>Duplicate</button></form><a class="delete-button" href="/app?delete=',0
+    menu_end db '#action-form">Delete</a></div></details></div></li>',10,0
+    duplicate_path db '/duplicate',0
+    app_query db '/app?',0
     edit_open db '<button type="button" data-edit aria-label="Edit task">Edit</button>',0
     complete_open db '<form method="post" action="/complete"><input type="hidden" name="id" value="',0
     reopen_open db '<form method="post" action="/reopen"><input type="hidden" name="id" value="',0
@@ -153,6 +169,7 @@ section .bss
     hdr_buf resb 2048
     extra_buf resb 512
     number_buf resb 24
+    row_date resb 24
     random_buf resb 16
     form_title resb TITLE_MAX+1
     form_token resb 64
@@ -768,6 +785,17 @@ handle_request:
     jne .method
 .read:
     mov rdi,request_path
+    mov rsi,app_query
+    mov edx,5
+    call strncmp
+    test rax,rax
+    jz .get_app
+    mov rdi,request_path
+    mov rsi,duplicate_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
     mov rsi,export_json_path
     call strcmp
     test rax,rax
@@ -904,6 +932,11 @@ handle_request:
     cmp byte [current_uid],0
     je .unauthorized
     mov rdi,request_path
+    mov rsi,duplicate_path
+    call strcmp
+    test rax,rax
+    jz .post_duplicate
+    mov rdi,request_path
     mov rsi,path_11
     call strcmp
     test rax,rax
@@ -994,6 +1027,14 @@ handle_request:
     call redirect
     jmp .done
 .load_app:
+    xor edi,edi
+    cmp byte [request_path+4],'?'
+    jne .parse_view
+    mov rdi,request_path+5
+.parse_view:
+    call parse_view
+    test rax,rax
+    js .error
     call lock_user_file
     test rax,rax
     js .error
@@ -1001,6 +1042,9 @@ handle_request:
     push rax
     call unlock_user_file
     pop rax
+    test rax,rax
+    js .error
+    call build_view
     test rax,rax
     js .error
     call render_app
@@ -1042,6 +1086,22 @@ handle_request:
     jne .bad
     mov r9,forget_headers
     call redirect
+    jmp .done
+.post_duplicate:
+    cmp qword [form_flags],2
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    call duplicate_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
     jmp .done
 .post_add:
     cmp qword [form_flags],1
@@ -1225,6 +1285,53 @@ handle_request:
 .conflict:
     mov rax,-409
 .error:
+    cmp qword [request_method],2
+    jne .plain_error
+    test qword [form_flags],1
+    jz .plain_error
+    cmp rax,-507
+    je .draft
+    cmp rax,-409
+    jne .plain_error
+.draft:
+    push rax
+    mov rdi,res_buf
+    mov rsi,draft_open
+    call copy_string
+    mov rsi,draft_add
+    cmp qword [form_flags],3
+    jne .draft_action
+    mov rsi,draft_edit
+.draft_action:
+    call copy_string
+    cmp qword [form_flags],3
+    jne .draft_field
+    mov rsi,draft_id
+    call copy_string
+    mov rax,[form_id]
+    call emit_number
+.draft_field:
+    mov rsi,draft_title
+    call copy_string
+    mov rsi,form_title
+    call html_escape
+    mov rsi,draft_close
+    call copy_string
+    mov rdx,rdi
+    sub rdx,res_buf
+    pop rax
+    mov rcx,status_507
+    cmp rax,-409
+    jne .draft_send
+    mov rcx,status_409
+.draft_send:
+    mov rdi,r12
+    mov rsi,res_buf
+    mov r8,mime_html
+    mov r9,private_headers
+    call respond
+    jmp .done
+.plain_error:
     neg rax
     mov rdi,rax
     mov rsi,r12
@@ -1286,17 +1393,15 @@ render_app:
     push r14
     mov rdi,res_buf
     mov rsi,app_head
-    call copy_string
-    push rdi
-    call get_todo_list
-    mov rbx,rax
-    pop rdi
-    mov r13d,TASK_MAX
+    call render_template
+    test rax,rax
+    js .template_error
+    mov r14,view_rows
+    mov r13,[view_count]
 .loop:
-    cmp qword [rbx],0
-    je .next
-    cmp byte [rbx+8],2
-    je .next
+    test r13,r13
+    jz .footer
+    mov rbx,[r14]
     mov rsi,li_open
     call copy_string
     mov rax,[rbx]
@@ -1313,9 +1418,20 @@ render_app:
     call copy_string
     lea rsi,[rbx+17]
     call html_escape
-    mov rsi,li_actions
+    mov rsi,li_date
     call copy_string
-    mov rsi,edit_open
+    push rdi
+    mov rdi,[rbx+9]
+    mov rsi,row_date
+    call format_utc
+    pop rdi
+    test rax,rax
+    jz .date_done
+    mov byte [row_date+10],0
+    mov rsi,row_date
+    call copy_string
+.date_done:
+    mov rsi,li_actions
     call copy_string
     mov rsi,complete_open
     cmp byte [rbx+8],1
@@ -1331,18 +1447,28 @@ render_app:
     mov rsi,reopen_close
 .close_action:
     call copy_string
-    mov rsi,delete_open
+    mov rsi,menu_open
     call copy_string
     mov rax,[rbx]
     call emit_number
-    mov rsi,delete_close
+    mov rsi,menu_edit_end
     call copy_string
-.next:
-    add rbx,128
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,menu_duplicate_end
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,menu_end
+    call copy_string
+    add r14,8
     dec r13
-    jnz .loop
+    jmp .loop
+.footer:
     mov rsi,app_foot
-    call copy_string
+    call render_template
+    test rax,rax
+    js .template_error
     mov rdx,rdi
     sub rdx,res_buf
     mov rdi,r12
@@ -1351,9 +1477,16 @@ render_app:
     mov r8,mime_html
     mov r9,private_headers
     call respond
+    jmp .done
+.template_error:
+    mov edi,500
+    mov rsi,r12
+    call send_error
+.done:
     pop r14
     pop r13
     pop rbx
     ret
+
 section .data
     legacy_prefix db '/?uid=',0
