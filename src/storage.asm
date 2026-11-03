@@ -212,6 +212,9 @@ load_todos:
     call parse_uint
     test rax,rax
     jle .bad
+    mov rdx,9223372036854775807
+    cmp rax,rdx
+    je .bad ; no representable next ID; refuse to commit corrupt metadata
     mov r8,rax
     mov rdi,rbx
     mov dl,'|'

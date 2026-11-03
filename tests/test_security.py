@@ -241,6 +241,16 @@ class SecurityTests(unittest.TestCase):
         self.assertIn('1001|0|', text)
         self.assertLess(path.stat().st_size, 262144)
 
+    def test_id_exhaustion_does_not_corrupt_metadata(self):
+        path = self.server.file(self.cookie)
+        path.write_text('9223372036854775806|0|1700000000|last valid id\n')
+        self.assertEqual(self.post('/complete', {'id': '9223372036854775806'})[0], 303)
+        self.assertIn('#next=9223372036854775807\n', path.read_text())
+        original = path.read_bytes()
+        self.assertEqual(self.post('/add', {'title': 'cannot allocate'})[0], 409)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.server.request('GET', '/app', cookie=self.cookie)[0], 200)
+
     def test_failed_snapshot_preserves_original_and_returns_error(self):
         self.add('original')
         path = self.server.file(self.cookie)
@@ -251,7 +261,7 @@ class SecurityTests(unittest.TestCase):
 
     def test_corrupt_truncated_oversized_files_not_overwritten(self):
         path = self.server.file(self.cookie)
-        for data in [b'1|0|1|torn', b'bad\n', b'1|0|1|a\0b\n', b'x'*262145, b'0|0|1|zero\n']:
+        for data in [b'1|0|1|torn', b'bad\n', b'1|0|1|a\0b\n', b'x'*262145, b'0|0|1|zero\n', b'9223372036854775807|0|1|overflow\n']:
             with self.subTest(data=data[:20]):
                 path.write_bytes(data)
                 self.assertEqual(self.post('/add', {'title': 'no overwrite'})[0], 500)
