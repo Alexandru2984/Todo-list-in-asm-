@@ -5,7 +5,7 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 
 [Live site](https://asm.micutu.com/) · [Audit](docs/AUDIT.md) ·
 [Security model](docs/SECURITY.md) · [Roadmap](docs/ROADMAP.md) ·
-[Operations](docs/RUNBOOK.md)
+[Operations](docs/RUNBOOK.md) · [Next iteration](docs/PRODUCTIVITY-PLAN.md)
 
 ## What works
 
@@ -22,6 +22,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
 - Native structured AND search for priority/status/dates/projects/tags, quoted
   phrases and exact metadata matching.
+- Native multi-task capture: paste one title per line, preview and add the entire
+  batch as one undoable change, without JavaScript.
 - Native JSON v1/v2 and CSV import with validated preview, merge/replace, exact
   reference remapping and atomic undo; no JavaScript parser/backend.
 - Native month calendar, workflow board and private SVG completion activity,

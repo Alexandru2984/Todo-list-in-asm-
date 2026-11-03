@@ -71,3 +71,12 @@ Boundary cases include 1,200 total records, quote-all CSV, a 2 MiB source whose
 form encoding approaches 6 MiB, and a valid escaped preview exceeding 4 MiB.
 Isolated nginx tests check the exact large-body exception and import concurrency
 without binding production ports or changing the live proxy.
+
+## Explicit line capture
+
+format=lines is used only by the **Add several tasks** form. It is never guessed
+from JSON/CSV input and permits merge only. One nonblank LF/CRLF line creates one
+literal title with a fresh ID/current UTC timestamp and default task properties.
+Outer ASCII spaces/tabs are trimmed; embedded controls and bare CR fail. It
+shares the same bounded preview/confirmation, validation, atomic save and undo
+transaction. Blank-only source is rejected instead of clearing any task state.

@@ -163,7 +163,7 @@ section .data
     error_417 db 'Expect headers are not supported.',10
     error_417_len equ $-error_417
     status_422 db 'HTTP/1.1 422 Unprocessable Content',13,10,0
-    error_422 db 'Check the title or import fields. Titles require 1 to 110 UTF-8 bytes; imports must match the supported JSON or CSV schema.',10
+    error_422 db 'Check the title or import fields. Titles require 1 to 110 UTF-8 bytes; imports must match the supported JSON/CSV schema or one-title-per-line format.',10
     error_422_len equ $-error_422
     status_500 db 'HTTP/1.1 500 Internal Server Error',13,10,0
     error_500 db 'Stored data could not be read safely. Please contact the operator.',10

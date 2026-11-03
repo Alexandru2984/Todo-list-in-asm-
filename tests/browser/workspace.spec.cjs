@@ -440,3 +440,42 @@ test('native import form and preview meet automated WCAG checks in both themes',
   result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(result.violations).toEqual([]);
 });
+
+
+test('quick capture previews literal titles and adds one undoable batch without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await native.locator('#quick-capture > summary').click();
+    await native.getByRole('textbox', { name: 'Tasks, one per line', exact: true }).fill('Plan the week\n\n Ședință 😀 \n=literal formula');
+    await native.getByRole('button', { name: 'Review tasks', exact: true }).click();
+    await expect(native.locator('[data-import-live]')).toHaveText('3');
+    await expect(native.locator('.import-preview-list li')).toHaveCount(3);
+    await native.getByRole('button', { name: 'Confirm import', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(3);
+    await expect(native.locator('.task-title').filter({ hasText: 'Ședință 😀' })).toBeVisible();
+    await native.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await expect(native.locator('#empty-state')).toBeVisible();
+    await native.getByRole('button', { name: 'Redo last change', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(3);
+    await native.locator('#quick-capture > summary').click();
+    for (const width of [320, 390, 768, 1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+    await native.setViewportSize(page.viewportSize());
+    await native.screenshot({ path: info.outputPath('quick-capture.png'), fullPage: true });
+  } finally { await context.close(); }
+});
+
+test('quick capture form meets automated WCAG checks in light and dark themes', async ({ page }) => {
+  await open(page);
+  await page.locator('#quick-capture > summary').click();
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(result.violations).toEqual([]);
+  }
+});

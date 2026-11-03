@@ -22,7 +22,7 @@ build/%.o: src/%.asm src/defs.inc | build
 
 build/router.o: $(WEB)
 
-build/main.o build/http.o build/json.o build/import_data.o build/import_json.o build/import_csv.o build/import_http.o: src/import.inc
+build/main.o build/http.o build/json.o build/import_data.o build/import_json.o build/import_csv.o build/import_lines.o build/import_http.o: src/import.inc
 
 build/backup: build/backup-native.o build/sha256.o build/utils.o
 	$(LD) $(LDFLAGS) -o $@ $^

@@ -178,3 +178,17 @@ cycles and dangling links fail without a write. Unknown creation dates remain
 unknown. CSV supports BOM, LF/CRLF, reordered columns and quoted/doubled quotes.
 Legacy CSV without escapeFlags retains leading apostrophes because the original
 value cannot be recovered unambiguously. See [the import contract](IMPORT.md).
+
+## Quick capture
+
+**Add several tasks**, below the new-task field, accepts one title per line.
+It trims outer ASCII spaces/tabs, ignores empty lines and accepts LF or CRLF
+(with an optional initial UTF-8 BOM). Punctuation, bullets and duplicate titles
+remain literal. Interior controls, bare CR, invalid UTF-8 and titles longer than
+110 UTF-8 bytes reject the whole batch.
+
+Preview validates every title and shows the first 20. Confirmation validates
+again under the write lock, assigns fresh IDs/current UTC creation times and
+appends all tasks as one atomic, undoable change. Existing tasks are preserved.
+The normal 1,000-live-task capacity and 2 MiB decoded-source limit apply. Quick
+capture never replaces the workspace; new tasks begin active with normal priority.

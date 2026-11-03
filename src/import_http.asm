@@ -2,7 +2,7 @@
 %include "src/import.inc"
 DEFAULT ABS
 extern request_body, strcmp, copy_string, html_escape, emit_number, format_utc
-extern import_json, import_csv, import_count, import_live, import_trash, import_tasks
+extern import_json, import_csv, import_lines, import_count, import_live, import_trash, import_tasks
 extern import_apply, import_capacity, lock_user_file, unlock_user_file, load_todos
 extern todo_count, res_buf, send_private_html, redirect_app, priority_names
 
@@ -15,7 +15,8 @@ section .data
     auto db 'auto',0
     json db 'json',0
     csv db 'csv',0
-    formats dq auto,json,csv
+    lines db 'lines',0
+    formats dq auto,json,csv,lines
     merge db 'merge',0
     replace db 'replace',0
     modes dq merge,replace
@@ -219,7 +220,7 @@ parse_import_form:
     test rax,rax
     jz .format_value
     inc r14
-    cmp r14,3
+    cmp r14,4
     jb .format_loop
     jmp .bad
 .format_value:
@@ -251,6 +252,11 @@ parse_import_form:
 .finish:
     test qword [form_flags],1
     jz .bad
+    cmp qword [selected_format],3
+    jne .valid
+    cmp qword [selected_mode],0
+    jne .bad
+.valid:
     xor eax,eax
     jmp .done
 .bad:
@@ -305,6 +311,8 @@ parse_payload:
     mov rdi,scratch
     cmp rax,1
     je import_json
+    cmp rax,3
+    je import_lines
     jmp import_csv
 
 ; fd=rdi, apply flag=rsi. Negative status returns to the main error handler.
