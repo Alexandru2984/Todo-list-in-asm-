@@ -4,18 +4,55 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  security-and-storage:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Assembly toolchain
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils
+      - name: Build and test protocol, sessions and persistence
+        run: make test
+      - name: Check patch formatting
+        run: git diff --check
 
-      - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y nasm netcat-openbsd
-
-      - name: Build
-        run: make
-
-      - name: Smoke test
-        run: ./tests/smoke.sh
+  browser-and-accessibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install Assembly toolchain
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils
+      - name: Install locked development dependencies
+        run: npm ci --ignore-scripts
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Build and check JavaScript
+        run: make all && node --check web/app.js
+      - name: Desktop, mobile and automated WCAG checks
+        run: npm run test:ui
+      - name: Upload browser report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

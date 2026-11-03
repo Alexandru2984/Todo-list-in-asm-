@@ -9,6 +9,7 @@ server = Server()
 print(f'http://127.0.0.1:{server.port}', flush=True)
 try:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
     signal.pause()
 finally:
     server.close()

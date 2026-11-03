@@ -1,0 +1,22 @@
+[Unit]
+Description=Verified private backup of ASM TODO workspaces
+After=asm-canary.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /srv/canary/asm.micutu.com/app/tools/backup.py
+User=root
+UMask=0077
+Nice=10
+MemoryMax=128M
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/var/lib/asm-todo/data
+ReadWritePaths=/var/backups/asm-todo
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX

@@ -1,69 +1,95 @@
-# ASM TODO Server
+# ASM TODO
 
-A multi-user TODO list web application written entirely in **x86_64 Assembly** for Linux — no libc, no frameworks, just NASM and raw syscalls. It ships a forking HTTP server, a dark-mode web UI, and crash-safe per-user file persistence.
+A focused task workspace with an **x86_64 Assembly backend**, raw Linux syscalls,
+and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework.
 
-![CI](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/workflows/ci.yml/badge.svg)
+[Live site](https://asm.micutu.com/) · [Audit](docs/AUDIT.md) ·
+[Security model](docs/SECURITY.md) · [Roadmap](docs/ROADMAP.md) ·
+[Operations](docs/RUNBOOK.md)
 
-## Features
+## What works
 
-- **Built from scratch:** pure NASM + Linux syscalls; the binary links with `ld` alone.
-- **Concurrent HTTP server:** `fork()` per connection — one slow client can't stall the rest. Children are auto-reaped via `SIGCHLD` ignore.
-- **Real request parsing:** reads until headers complete and the `Content-Length` body has fully arrived, so split-packet POSTs work; responses are delivered through a partial-write-safe loop.
-- **Proper HTTP responses:** `Content-Length` on every response, `405 Method Not Allowed` for wrong methods, and security headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`).
-- **Multi-user:** each browser gets a random 32-hex-char uid (generated client-side, validated server-side) with its own task file.
-- **CRUD + extras:** add, complete, edit (✎), delete, and clear-done — with timestamps, task counter, and All/Active/Done filters.
-- **Crash-safe persistence:** operations append to `data/todos-{uid}.txt`, then the log is compacted by writing a temp file and `rename()`-ing it over the original. Concurrent children serialize via `flock` on a per-user lock file.
-- **Hardened:** HTML-escaped output (XSS), URL decoding with CR/LF/`|` stripping (storage-format injection), strict hex uid validation (path traversal), `atoi` overflow guard, receive/send socket timeouts, title length caps.
+- Add, edit, complete, reopen, delete and clear completed tasks.
+- Search, All/Active/Done filters, four sort orders and progress indicators.
+- Light/dark themes, keyboard shortcuts (`N` and `/`), desktop focus timer.
+- JSON and spreadsheet-safe CSV exports; explicit recovery-key download.
+- Responsive layouts checked from 320 to 1440 px; accessible native dialogs,
+  keyboard controls, status announcements and reduced-motion preferences.
+- Public landing page, canonical/social metadata, a share preview, robots and
+  sitemap. Private workspace responses send `noindex` and never enter the sitemap.
+- Anonymous 128-bit sessions generated on the server, in HttpOnly Secure
+  SameSite cookies. Legacy URLs/localStorage keys migrate to the new session.
+- Strict bounded HTTP parser, complete-write handling, per-list locks, atomic
+  synced snapshots, capacity checks and explicit storage errors.
 
-## Requirements
+Each browser session is an anonymous capability, not a password-protected
+account. Anyone with a recovery key can access that workspace. Save the key
+privately before clearing cookies. Exports of tasks do not contain the key.
 
-- Linux x86_64
-- [NASM](https://nasm.us/), `ld` (binutils), `make`
-- `curl` and `netcat` for the smoke tests
+## Build and run
 
-## Getting started
+Linux x86_64, NASM, binutils/ld and make are required.
 
-```bash
-make            # build → bin/server
-make run        # build + start
-./bin/server 8080   # optional: choose the start port
+```sh
+make                 # build/server; never overwrites the production binary
+make run             # local data/ and 127.0.0.1:34624
+./build/server 8080   # choose a port; conflicts fail instead of scanning
 ```
 
-The server prints the port it listens on (default `34624`; if busy, it scans upward). Open `http://localhost:<port>` — the UI assigns your uid automatically and keeps it in `localStorage`.
+Use a TLS reverse proxy for normal deployment: session cookies are Secure.
+Chromium accepts loopback as a trustworthy development context. The live
+service uses `bin/server` and `/var/lib/asm-todo/data`, under a dedicated OS user.
+The repository's old `data/` directory is not live storage after migration.
 
-## Testing
+For a disposable preview, without any real user data:
 
-```bash
-make && ./tests/smoke.sh
+```sh
+python3 tools/preview.py   # prints its temporary loopback URL; Ctrl-C to stop
 ```
 
-Twenty end-to-end checks over real HTTP: routing, header correctness, CRUD with on-disk assertions, XSS/injection/traversal hardening, split-packet POST delivery, and parallel-write integrity. The same suite runs in GitHub Actions on every push.
+## Verification and CI
+
+```sh
+make check                         # Python protocol/storage/security/backup tests
+npm ci --ignore-scripts             # development-only browser tools
+npx playwright install chromium --only-shell
+npm run test:ui                     # Chromium desktop + Pixel 5 emulation, axe checks
+npm audit --audit-level=high
+```
+
+Every test server uses a new temporary directory, random sessions and a selected
+loopback port. Tests never delete a production UID or bind the live port.
+The compatibility entry point `tests/smoke.sh` runs the isolated Python suite.
+GitHub Actions has separate security/storage and browser/accessibility jobs,
+read-only repository permissions, pinned action SHAs, timeouts and failure reports.
+No deploy or secrets are available to the workflow.
+
+Automated axe checks cover WCAG A/AA rules that the tool can assess. They are not
+a certification or a substitute for manual assistive-technology testing.
 
 ## Architecture
 
-| File | Role |
+| File | Purpose |
 |---|---|
-| `src/main.asm` | entry point, signals, sockets, fork-per-connection accept loop, request reading |
-| `src/router.asm` | routing, form parsing, URL decoding, HTML escaping/rendering, HTTP responses |
-| `src/storage.asm` | task array, append-log persistence, compaction, per-user `flock` |
-| `src/utils.asm` | `strlen`, `itoa`, `atoi`, `strncmp`, `write_all`, … |
-| `src/defs.inc` | syscall numbers, constants, macros |
+| `src/main.asm` | Loopback socket, bounded child lifetime, fork-per-connection lifecycle |
+| `src/http.asm` | Bounded HTTP line, header and body validation |
+| `src/router.asm` | Routing, sessions, same-origin checks, forms, escaping and rendering |
+| `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
+| `src/utils.asm` | Complete writes, strict decimal parsing, UTF-8 validation and strings |
+| `web/` | Assets embedded into the binary at build time; no separate asset server |
+| `deploy/` | Reviewed systemd/nginx configurations and deployment procedure |
+| `tools/backup.py` | Private verified local archives; no external upload |
 
-### Storage format
+Snapshots retain the existing `id|status|timestamp|title` record format. A new
+`#next=N` header preserves IDs across deletions. Status is 0 active, 1 complete;
+legacy tombstone records (status 2) are replayed and removed on the next save.
 
-One record per line in `data/todos-{uid}.txt`:
+Limits: 1,000 tasks per workspace, 110 **UTF-8 bytes** per title, 4,095 request
+bytes, one HTTP request per connection. There is no runtime TLS, account recovery,
+server-side session revocation, offline queue or collaboration layer.
 
-```
-id|status|timestamp|title        # status: 0=active, 1=done
-```
-
-Mutations append a superseding record (crash-safe), then the file is rewritten compacted via temp-file + atomic `rename()`. On load, records replay in order, so the last write for an id wins.
-
-## Limitations (by design, it's assembly)
-
-- The uid in the URL is the only access control — treat it as a capability token, don't host anything sensitive.
-- Max 1000 tasks per user, titles capped at 110 characters, requests at 4 KB.
-- HTTP/1.0-style `Connection: close` on every request; no TLS (put it behind a reverse proxy if exposed).
+The roadmap covers priorities/due dates, projects, import, offline support,
+passkeys, sharing and scale. These are proposals, not released features.
 
 ## License
 

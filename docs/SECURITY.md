@@ -28,12 +28,14 @@ previous snapshot. A failure after rename or loss of the response can be
 ambiguous: reload before retrying; request idempotency keys are a future feature.
 
 No-follow opens resist symlink redirection. The storage directory must remain
-private. The shared production Unix identity remains a cross-service risk;
-migrate to a dedicated service account and filesystem quota in a separate
-operational change. Assembly code has fixed buffers and no memory-safe runtime;
-tests reduce risk but cannot establish the absence of memory corruption.
+private. Production runs under the dedicated `asm-todo` Unix identity, with private state,
+a syscall allowlist, loopback-only networking and process/memory caps. A global
+filesystem quota is still required to bound total anonymous workspace growth. Assembly code has fixed buffers and no memory-safe runtime;
+tests reduce risk but cannot establish the absence of memory corruption. The
+static binary is not position-independent; the non-executable stack and syscall
+sandbox do not replace memory-safety guarantees.
 
-Production requires TLS, query-free access logging, strict CSP, no shared
+Production requires TLS, query-free access logging, strict-origin referrers, strict CSP, no shared
 caching for workspace responses, no task analytics, and an external backup and
 monitoring policy. The app returns explicit security headers even without nginx.
 See RUNBOOK.md and RELEASE.md for operational details and verification.
