@@ -20,9 +20,12 @@ cp -a /etc/nginx/conf.d/asm-rate-limit.conf "$BACKUP_DIR/asm-limits.conf"
 if [[ -f /etc/nginx/snippets/asm-proxy.conf ]]; then cp -a /etc/nginx/snippets/asm-proxy.conf "$BACKUP_DIR/asm-proxy.conf"; fi
 cp -a bin/server "$BACKUP_DIR/server"
 # Old releases do not implement this read-only command. A successful exact
-# response identifies a V2-aware rollback target; otherwise conversion is needed.
+# response identifies a compatible planner rollback target; otherwise conversion is needed.
 PREVIOUS_STORAGE_VERSION=1
-if [[ $(bin/server --storage-version 2>/dev/null || true) == 2 ]]; then PREVIOUS_STORAGE_VERSION=2; fi
+PREVIOUS_STORAGE_VERSION=$(bin/server --storage-version 2>/dev/null || true)
+case "$PREVIOUS_STORAGE_VERSION" in 2|3) ;; *) PREVIOUS_STORAGE_VERSION=1;; esac
+NEW_STORAGE_VERSION=$(build/server --storage-version)
+case "$NEW_STORAGE_VERSION" in 2|3) ;; *) echo 'Unsupported storage revision.' >&2; exit 1;; esac
 printf '%s\n' "$PREVIOUS_STORAGE_VERSION" > "$BACKUP_DIR/previous-storage-version"
 if [[ -f bin/backup ]]; then cp -a bin/backup "$BACKUP_DIR/backup"; fi
 cp -a /etc/systemd/system/asm-backup.service "$BACKUP_DIR/asm-backup.service"
@@ -31,7 +34,7 @@ git rev-parse HEAD > "$BACKUP_DIR/revision"
 sha256sum build/server > "$BACKUP_DIR/new-binary.sha256"
 STOPPED=0
 TIMER_STOPPED=0
-STARTED=0
+START_ATTEMPTED=0
 PREVIOUS_UID=$(stat -c %u "$LIVE_WORKDIR/data")
 PREVIOUS_GID=$(stat -c %g "$LIVE_WORKDIR/data")
 SUCCESS=0
@@ -40,28 +43,29 @@ rollback() {
     if [[ $SUCCESS == 0 ]]; then
         echo "Deployment failed; restoring ASM service/configuration from $BACKUP_DIR" >&2
         if [[ $STOPPED == 1 ]]; then systemctl stop asm-canary.service || true; fi
-        # Never place the V1 binary over V2 files. Preserve the entire V2 state
+        # Never place the older binary over incompatible planner files. Preserve the entire planner state
         # first; the native offline converter preflights every workspace. If a
-        # conversion fails, restore that copy and retain the V2 service/binaries.
-        if [[ $STARTED == 1 && $PREVIOUS_STORAGE_VERSION == 1 ]]; then
-            if ! cp -a /var/lib/asm-todo/data "$BACKUP_DIR/failed-release-v2-data"; then
-                echo 'Cannot preserve V2 state; retaining the V2 release.' >&2
+        # conversion fails, restore that copy and retain the compatible planner service/binaries.
+        if [[ $START_ATTEMPTED == 1 && $PREVIOUS_STORAGE_VERSION != "$NEW_STORAGE_VERSION" ]]; then
+            if ! cp -a /var/lib/asm-todo/data "$BACKUP_DIR/failed-release-planner-data"; then
+                echo 'Cannot preserve planner state; retaining the compatible planner release.' >&2
                 systemctl start asm-canary.service || true
+                if [[ $TIMER_STOPPED == 1 ]]; then systemctl start asm-backup.timer || true; fi
                 exit "$exit_code"
             fi
             if ! (cd /var/lib/asm-todo && runuser -u asm-todo -- "$REPO_DIR/bin/server" --downgrade); then
-                if ! mv /var/lib/asm-todo/data "$BACKUP_DIR/partial-downgrade-data" || ! cp -a "$BACKUP_DIR/failed-release-v2-data" /var/lib/asm-todo/data; then
-                    echo "Cannot restore V2 state. Service remains stopped; private recovery copy: $BACKUP_DIR/failed-release-v2-data" >&2
+                if ! mv /var/lib/asm-todo/data "$BACKUP_DIR/partial-downgrade-data" || ! cp -a "$BACKUP_DIR/failed-release-planner-data" /var/lib/asm-todo/data; then
+                    echo "Cannot restore planner state. Service remains stopped; private recovery copy: $BACKUP_DIR/failed-release-planner-data" >&2
                     exit "$exit_code"
                 fi
-                echo 'Native downgrade failed; restored V2 data and retained the V2 release.' >&2
+                echo 'Native downgrade failed; restored planner data and retained the compatible planner release.' >&2
                 systemctl start asm-canary.service || true
                 if [[ $TIMER_STOPPED == 1 ]]; then systemctl start asm-backup.timer || true; fi
                 exit "$exit_code"
             fi
         fi
         # Preserve live changes made during the brief initial directory migration.
-        if [[ $STARTED == 1 && "$LIVE_WORKDIR" != /var/lib/asm-todo ]]; then
+        if [[ $START_ATTEMPTED == 1 && "$LIVE_WORKDIR" != /var/lib/asm-todo ]]; then
             cp -a /var/lib/asm-todo/data "$BACKUP_DIR/failed-release-data"
             mv -- "$LIVE_WORKDIR/data" "$BACKUP_DIR/original-data-at-rollback"
             cp -a /var/lib/asm-todo/data "$LIVE_WORKDIR/data"
@@ -113,8 +117,8 @@ install -m 0755 build/backup bin/backup.new
 mv -f -- bin/backup.new bin/backup
 install -m 0644 deploy/asm-canary.service /etc/systemd/system/asm-canary.service
 systemctl daemon-reload
+START_ATTEMPTED=1
 systemctl start asm-canary.service
-STARTED=1
 # Probe the new backend before nginx switches to the new policy.
 python3 tools/deployment_probe.py --base http://127.0.0.1:34624 --cleanup-data-dir /var/lib/asm-todo/data
 systemctl reload nginx

@@ -93,3 +93,18 @@ Reopen a completed parent before adding an active child or reopening its subtask
 A completed task cannot acquire unfinished prerequisites. Duplication retains
 parent/prerequisite links and still validates them; recurring next occurrences
 start outside the original parent, while retaining prerequisite IDs.
+
+## Undo, trash and recent changes
+
+**Undo last change** reverses one entire workspace change; **Redo last change**
+reapplies it. Recurrence, bulk clear, deletion and restoration are single changes.
+IDs stay monotonic and a new change replaces the redo branch. State survives a
+server restart and a verified native archive restore. Recent changes lists the
+last 20 numeric actions with UTC timestamps.
+
+**Trash** contains up to 200 retained items. Restore brings back the selected
+subtree after a capacity check. Restoring a child while its parent remains in
+trash makes that child a root task. Permanent removal requires confirmation,
+detaches references and clears undo. Empty trash applies to every trash item.
+Server backups and private release snapshots may still retain copies. See the
+[history storage contract](STORAGE-HISTORY.md) for the exact retention boundary.

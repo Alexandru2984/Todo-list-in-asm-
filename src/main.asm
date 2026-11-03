@@ -10,10 +10,10 @@ section .data
     newline db 10,0
     failure db 'ASM TODO: startup failed (storage, port or socket)',10,0
     version_arg db '--storage-version',0
-    version_text db '2',10,0
+    version_text db '3',10,0
     downgrade_arg db '--downgrade',0
     downgrade_ok db 'ASM TODO: offline downgrade completed',10,0
-    downgrade_bad db 'ASM TODO: offline downgrade failed; retain the V2 binary and restore the private copy',10,0
+    downgrade_bad db 'ASM TODO: offline downgrade failed; retain the compatible planner binary and restore the private copy',10,0
     sockaddr: dw AF_INET,0
               dd 0x0100007f
               dq 0

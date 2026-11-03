@@ -19,6 +19,7 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
   and spreadsheet-safe metadata exports.
 - Native subtasks and up to eight prerequisites, combined cycle checks, blocked
   task view and server-enforced completion rules.
+- Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.
@@ -113,8 +114,9 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `tools/backup.py` | Legacy .tar.gz compatibility/rollback tool; no scheduled use |
 
 Versioned snapshots preserve legacy V1 reads and write explicit V2 metadata
-on mutation. Monotonic IDs survive deletion. Native trash retains the latest
-200 items; restoration UI is scheduled in the planner delivery plan. The native
+on mutation. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
+workspace-wide undo/redo and bounded activity in the
+[revision 3 extension](docs/STORAGE-HISTORY.md). The native
 offline downgrade command supports rollback to older binaries. See the
 [storage contract](docs/STORAGE-V2.md).
 

@@ -29,7 +29,8 @@ times are captured on new completions; legacy completion times stay unknown.
 Legacy V1 replay files remain readable. A GET never migrates or rewrites data.
 The next successful mutation writes V2 atomically. Native deletion retains a
 bounded trash entry and includes descendants; oldest trash beyond 200 entries is
-removed and references are detached. Trash restoration UI is a later stage.
+removed and references are detached. Trash restoration, undo and activity now use the backward-compatible
+[revision 3 extension](STORAGE-HISTORY.md).
 
 Every opened data/temporary inode must be regular and have at most one link.
 Checks precede reads or truncation; O_NOFOLLOW and O_NONBLOCK prevent symlink and
@@ -58,7 +59,7 @@ times survive. Planner metadata and trash do not fit V1 and remain in the privat
 V2 recovery copy. Maintenance must run offline; per-file locks and the directory
 maintenance lock do not replace stopping traffic.
 
-`deploy/apply.sh` detects whether the previous binary reads V2 using
+`deploy/apply.sh` compares previous/new reader revisions using
 `--storage-version`. On rollback to V1, it preserves V2 data and invokes this
 converter before installing the previous binary. A failed conversion restores the
 V2 recovery copy and keeps the compatible V2 release. If copying that recovery

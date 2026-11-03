@@ -46,7 +46,7 @@ class PlannerStorageTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), original)
         self.assertEqual(self.post('/add', {'title': 'Ședință 😀'}), 303)
         content = self.path.read_text()
-        self.assertTrue(content.startswith('#asm=2\n#next=91\n'))
+        self.assertTrue(content.startswith('#asm=3\n#next=91\n'))
         self.assertNotIn('legacy deleted', content)
         self.assertEqual([task['id'] for task in self.live()], ['1', '90'])
 

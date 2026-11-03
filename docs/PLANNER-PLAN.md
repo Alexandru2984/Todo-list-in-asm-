@@ -22,7 +22,7 @@ commit without assistant/coauthor credits.
 - [x] Subtasks/dependencies: parent links plus up to eight prerequisite IDs,
   combined cycle detection, blocked-task view, completion checks, useful native
   property forms. No dangling references after permanent purge.
-- [ ] Undo/trash/activity: soft delete/restore, latest 200 trash items, one atomic
+- [x] Undo/trash/activity: soft delete/restore, latest 200 trash items, one atomic
   workspace-wide undo/redo snapshot (also covers bulk/recurrence/import), last 20
   activity events. Permanent purge clears undo content for the purged action.
 - [ ] Import: native bounded JSON v1/v2 and CSV parsers, validated preview,
@@ -112,3 +112,9 @@ or compliance guarantee is inferred from this repository.
   passed across desktop/mobile, including no-JavaScript prerequisites and axe.
   Mixed cycles, atomic rejection, subtree deletion, large IDs and worst-case
   graph/escaped rendering are covered.
+
+- History/trash stage: 106 native/protocol tests passed; eight focused browser
+  cases passed on desktop/mobile. Verified native archive restoration preserves
+  metadata and undo; V3 downgrade also passed an isolated drill using the actual
+  previous production binary. Reader revision comparison covers rollback across
+  V1/V2/V3, including an unsuccessful service-start attempt.

@@ -75,7 +75,7 @@ downgrade_storage:
     test r13,r13
     jz .unlock
     cmp qword [storage_version],2
-    jne .unlock
+    jb .unlock
     call save_legacy_snapshot
     test rax,rax
     js .unlock_bad

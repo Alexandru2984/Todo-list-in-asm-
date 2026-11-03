@@ -4,8 +4,11 @@ extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 extern parse_metadata, format_metadata, validate_metadata_graph
 extern apply_properties, property_task, property_flags
 extern next_occurrence
+extern history_reset, history_parse, history_validate, history_write, undo_todos, undo_mode
+extern history_prepare, history_complete
 extern task_ready
 
+global todos, todo_count, lookup_array, save_snapshot, format_line, line_buf
 global find_todo, duplicate_todo
 global find_any_todo, split_field, storage_version, save_legacy_snapshot
 global init_storage, load_todos, append_todo, complete_todo, delete_todo
@@ -15,8 +18,9 @@ section .data
     data_dir db 'data',0
     prefix db 'data/todos-',0
     seq_prefix db '#next=',0
-    v2_header db '#asm=2',10
+    v2_header db '#asm=3',10
     v2_header_len equ $-v2_header
+    lookup_array dq todos
     next_id dq 1
     lock_fd dq -1
 section .bss
@@ -151,6 +155,8 @@ load_todos:
     mov qword [storage_version],1
     mov qword [sequence_seen],0
     mov qword [write_legacy],0
+    mov qword [lookup_array],todos
+    call history_reset
     call build_path
     mov eax,SYS_OPEN
     mov rdi,todo_path
@@ -213,14 +219,44 @@ load_todos:
     test r13,r13
     jnz .bad
     cmp dword [r14+3],'m=2'
+    je .v2
+    cmp dword [r14+3],'m=3'
     jne .bad
+    mov qword [storage_version],3
+    jmp .next
+.v2:
     mov qword [storage_version],2
     jmp .next
 .sequence:
+    cmp qword [storage_version],3
+    jne .metadata
+    cmp word [r14],'U|'
+    je .previous_base
+    cmp word [r14],'V|'
+    je .previous_metadata
+    mov rdi,r14
+    call history_parse
+    test rax,rax
+    js .bad
+    jnz .next
+    jmp .metadata
+.previous_base:
+    cmp qword [undo_mode],0
+    je .bad
+    mov qword [lookup_array],undo_todos
+    add r14,2
+    jmp .fields
+.previous_metadata:
+    cmp qword [undo_mode],0
+    je .bad
+    mov qword [lookup_array],undo_todos
+    jmp .parse_metadata
+.metadata:
     cmp word [r14],'A|'
     jne .sequence_number
     cmp qword [storage_version],2
-    jne .bad
+    jb .bad
+.parse_metadata:
     lea rdi,[r14+2]
     call parse_metadata
     test rax,rax
@@ -232,7 +268,7 @@ load_todos:
     cmp word [r14+4],'t='
     jne .bad
     cmp qword [storage_version],2
-    jne .read_sequence
+    jb .read_sequence
     cmp qword [sequence_seen],0
     jne .bad
     cmp r13,7 ; V2 sequence header follows the version header
@@ -311,7 +347,7 @@ load_todos:
     jbe .slot
     mov [next_id],rax
 .slot:
-    mov rdi,todos
+    mov rdi,[lookup_array]
     mov ecx,SLOT_MAX
 .find_slot:
     cmp [rdi],r8
@@ -324,7 +360,7 @@ load_todos:
     jmp .bad ; legacy overflow must be recovered explicitly, never discarded
 .existing:
     cmp qword [storage_version],2
-    je .bad ; V2 snapshots cannot contain replay/duplicate records
+    jae .bad ; Versioned snapshots cannot contain replay/duplicate records
 .update:
     mov [rdi],r8
     mov [rdi+8],r9b
@@ -337,12 +373,13 @@ load_todos:
     test al,al
     jnz .copy
 .next:
+    mov qword [lookup_array],todos
     mov r13,r15
     sub r13,file_buf
     jmp .record
 .count:
     cmp qword [storage_version],2
-    jne .legacy_count
+    jb .legacy_count
     cmp qword [sequence_seen],1
     jne .bad
     mov rdi,todos
@@ -350,6 +387,12 @@ load_todos:
     test rax,rax
     js .bad
 .legacy_count:
+    cmp qword [storage_version],3
+    jne .count_current
+    call history_validate
+    test rax,rax
+    js .bad
+.count_current:
     mov rdi,todos
     mov ecx,SLOT_MAX
     xor r8d,r8d
@@ -359,7 +402,7 @@ load_todos:
     cmp byte [rdi+8],2
     jne .live_count
     cmp qword [storage_version],2
-    jne .drop_legacy
+    jb .drop_legacy
     inc r8
     jmp .count_next
 .drop_legacy:
@@ -517,6 +560,13 @@ save_snapshot:
     add rbx,TASK_SIZE
     dec r13
     jnz .loop
+    cmp qword [write_legacy],0
+    jne .sync
+    mov rdi,r12
+    call history_write
+    test rax,rax
+    js .close_bad
+.sync:
     mov eax,SYS_FSYNC
     mov rdi,r12
     syscall
@@ -610,6 +660,9 @@ append_todo:
     jnz .find
     jmp .full
 .found:
+    mov edi,1
+    mov rsi,[next_id]
+    call history_prepare
     push r8
     mov rdi,r8
     xor eax,eax
@@ -661,7 +714,7 @@ find_todo:
 
 ; ID zero exposes the array base to the bounded native graph walker.
 find_any_todo:
-    mov rax,todos
+    mov rax,[lookup_array]
     test rdi,rdi
     jz .found
     mov ecx,SLOT_MAX
@@ -704,6 +757,9 @@ complete_todo:
     test rax,rax
     js .done
     mov r12,rax
+    mov edi,3
+    mov rsi,[rbx]
+    call history_prepare
     mov r13,todos
     mov ecx,SLOT_MAX
 .find_next:
@@ -729,6 +785,12 @@ complete_todo:
     mov qword [r13+T_PREVIOUS],0
     mov qword [r13+T_STAGE],0
 .complete:
+    test r13,r13
+    jnz .mark_complete
+    mov edi,3
+    mov rsi,[rbx]
+    call history_prepare
+.mark_complete:
     mov eax,SYS_TIME
     xor edi,edi
     syscall
@@ -738,6 +800,7 @@ complete_todo:
     jz .save
     mov [r13+9],rax
 .save:
+    call history_complete
     call save_snapshot
     jmp .done
 .missing:
@@ -757,6 +820,8 @@ reopen_todo:
     call find_todo
     test rax,rax
     jz missing_todo
+    cmp byte [rax+8],0
+    je .unchanged
     mov r8,rax
     mov rdi,[rax+T_PARENT]
     test rdi,rdi
@@ -767,6 +832,9 @@ reopen_todo:
     cmp byte [rax+8],0
     jne .conflict
 .reopen:
+    mov edi,4
+    mov rsi,[r8]
+    call history_prepare
     mov rax,r8
     mov byte [rax+8],0
     mov qword [rax+T_COMPLETED],0
@@ -774,11 +842,18 @@ reopen_todo:
 .conflict:
     mov rax,-409
     ret
+.unchanged:
+    xor eax,eax
+    ret
 delete_todo:
     call find_todo
     test rax,rax
     jz missing_todo
-    mov rdi,rax
+    mov r8,rax
+    mov edi,5
+    mov rsi,[r8]
+    call history_prepare
+    mov rdi,r8
     call trash_slot
     jmp commit_trash
 edit_todo:
@@ -787,6 +862,13 @@ edit_todo:
     pop rsi
     test rax,rax
     jz missing_todo
+    push rax
+    push rsi
+    mov edi,2
+    mov rsi,[rax]
+    call history_prepare
+    pop rsi
+    pop rax
     push rax
     lea rdi,[rax+17]
 .copy:
@@ -805,6 +887,19 @@ missing_todo:
     mov rax,-404
     ret
 clear_done_todos:
+    mov rdi,todos
+    mov ecx,SLOT_MAX
+.check:
+    cmp byte [rdi+8],1
+    je .prepare
+    add rdi,TASK_SIZE
+    loop .check
+    xor eax,eax
+    ret
+.prepare:
+    mov edi,6
+    xor esi,esi
+    call history_prepare
     push rbx
     push r12
     mov rbx,todos

@@ -13,6 +13,7 @@ extern duplicate_todo
 extern export_json, export_csv
 extern reset_properties, parse_property, property_flags, property_task
 extern render_properties, render_task_badges
+extern undo_workspace, restore_todo, purge_todo, empty_trash
 extern task_ready
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
@@ -91,6 +92,10 @@ section .data
     li_open db '<li data-id="',0
     li_ts db '" data-ts="',0
     li_active db '" data-done="0"><div class="task-copy"><span class="task-title">',0
+    li_trash db '" data-done="2" class="trashed"><div class="task-copy"><span class="task-title">',0
+    restore_task_open db '<form method="post" action="/restore-task"><input type="hidden" name="id" value="',0
+    restore_task_close db '"><button class="secondary-button">Restore</button></form><a class="delete-button" href="/app?purge=',0
+    trash_row_close db '#action-form">Purge</a></div></li>',10,0
     li_done db '" data-done="1" class="done"><div class="task-copy"><span class="task-title">',0
     li_actions db '</div><div class="task-actions">',0
     close_time db '</time>',0
@@ -102,6 +107,11 @@ section .data
     menu_duplicate_start db '<form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
     menu_duplicate_end db '"><button>Duplicate</button></form><a class="delete-button" href="/app?delete=',0
     menu_end db '#action-form">Delete</a></div></details></div></li>',10,0
+    undo_path db '/undo',0
+    redo_path db '/redo',0
+    restore_task_path db '/restore-task',0
+    purge_path db '/purge',0
+    empty_trash_path db '/empty-trash',0
     duplicate_path db '/duplicate',0
     app_query db '/app?',0
     edit_open db '<button type="button" data-edit aria-label="Edit task">Edit</button>',0
@@ -881,6 +891,31 @@ handle_request:
     test rax,rax
     jz .legacy
     mov rdi,request_path
+    mov rsi,undo_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,redo_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,restore_task_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,purge_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,empty_trash_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
     mov rsi,path_8
     call strcmp
     test rax,rax
@@ -963,6 +998,31 @@ handle_request:
     jz .post_forget
     cmp byte [current_uid],0
     je .unauthorized
+    mov rdi,request_path
+    mov rsi,undo_path
+    call strcmp
+    test rax,rax
+    jz .post_undo
+    mov rdi,request_path
+    mov rsi,redo_path
+    call strcmp
+    test rax,rax
+    jz .post_redo
+    mov rdi,request_path
+    mov rsi,restore_task_path
+    call strcmp
+    test rax,rax
+    jz .post_restore_task
+    mov rdi,request_path
+    mov rsi,purge_path
+    call strcmp
+    test rax,rax
+    jz .post_purge
+    mov rdi,request_path
+    mov rsi,empty_trash_path
+    call strcmp
+    test rax,rax
+    jz .post_empty_trash
     mov rdi,request_path
     mov rsi,duplicate_path
     call strcmp
@@ -1130,6 +1190,51 @@ handle_request:
     js .unlock_error
     mov rdi,[form_id]
     call duplicate_todo
+    test rax,rax
+    js .unlock_error
+    call unlock_user_file
+    call redirect_app
+    jmp .done
+.post_undo:
+    mov r13d,1
+    jmp .post_history
+.post_redo:
+    mov r13d,2
+.post_history:
+    cmp qword [form_flags],0
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,r13
+    call undo_workspace
+    jmp .finish_mutation
+.post_restore_task:
+    mov r13,restore_todo
+    jmp .post_trash
+.post_purge:
+    mov r13,purge_todo
+.post_trash:
+    cmp qword [form_flags],2
+    jne .bad
+    jmp .trash_mutation
+.post_empty_trash:
+    cmp qword [form_flags],0
+    jne .bad
+    mov r13,empty_trash
+.trash_mutation:
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    call r13
+.finish_mutation:
     test rax,rax
     js .unlock_error
     call unlock_user_file
@@ -1447,6 +1552,9 @@ render_app:
     call copy_string
     mov rax,[rbx+9]
     call emit_number
+    mov rsi,li_trash
+    cmp byte [rbx+8],2
+    je .title
     mov rsi,li_active
     cmp byte [rbx+8],1
     jne .title
@@ -1474,6 +1582,8 @@ render_app:
     call render_task_badges
     mov rsi,li_actions
     call copy_string
+    cmp byte [rbx+8],2
+    je .trash_actions
     mov rsi,complete_open
     cmp byte [rbx+8],1
     jne .action
@@ -1523,6 +1633,19 @@ render_app:
     call emit_number
     mov rsi,menu_end
     call copy_string
+    jmp .next_row
+.trash_actions:
+    mov rsi,restore_task_open
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,restore_task_close
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,trash_row_close
+    call copy_string
+.next_row:
     add r14,8
     dec r13
     jmp .loop

@@ -5,11 +5,13 @@ extern get_todo_list, find_todo
 extern today_epoch
 extern tag_contains
 extern task_ready, property_task
+extern find_any_todo
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
  global view_id, view_target, unicode_compare
 global view_project, view_tag
+global view_trash
 section .data
     key_filter db 'f',0
     key_sort db 'sort',0
@@ -19,6 +21,7 @@ section .data
     key_newparent db 'newparent',0
     key_edit db 'edit',0
     key_delete db 'delete',0
+    key_purge db 'purge',0
     key_confirm db 'confirm',0
     filter_all db 'all',0
     filter_active db 'active',0
@@ -27,7 +30,8 @@ section .data
     filter_upcoming db 'upcoming',0
     filter_overdue db 'overdue',0
     filter_blocked db 'blocked',0
-    extra_filters dq filter_today,filter_upcoming,filter_overdue,filter_blocked
+    filter_trash db 'trash',0
+    extra_filters dq filter_today,filter_upcoming,filter_overdue,filter_blocked,filter_trash
     sort_newest db 'newest',0
     sort_oldest db 'oldest',0
     sort_az db 'az',0
@@ -37,6 +41,7 @@ section .data
     priority_ranks dq 1,0,2,3
     confirm_clear db 'clear',0
     confirm_forget db 'forget',0
+    confirm_empty db 'empty-trash',0
 section .bss
     view_filter resq 1
     view_sort resq 1
@@ -55,6 +60,7 @@ section .bss
     view_active resq 1
     view_percent resq 1
     view_today resq 1
+    view_trash resq 1
 section .text
 ; Parse only known, unique query fields. rdi=NULL means defaults.
 parse_view:
@@ -151,6 +157,11 @@ parse_view:
     test rax,rax
     jz .delete
     mov rdi,rbx
+    mov rsi,key_purge
+    call strcmp
+    test rax,rax
+    jz .purge
+    mov rdi,rbx
     mov rsi,key_confirm
     call strcmp
     test rax,rax
@@ -167,8 +178,16 @@ parse_view:
     mov rsi,confirm_forget
     call strcmp
     test rax,rax
-    jnz .bad
+    jnz .empty_trash
     mov qword [view_action],4
+    jmp .next
+.empty_trash:
+    mov rdi,decode_buf
+    mov rsi,confirm_empty
+    call strcmp
+    test rax,rax
+    jnz .bad
+    mov qword [view_action],6
     jmp .next
 .clear:
     mov qword [view_action],3
@@ -178,6 +197,9 @@ parse_view:
     jmp .id
 .delete:
     mov qword [view_action],2
+    jmp .id
+.purge:
+    mov qword [view_action],5
 .id:
     test qword [view_flags],8
     jnz .bad
@@ -218,7 +240,7 @@ parse_view:
     test rax,rax
     jz .extra_filter_value
     inc ebx
-    cmp ebx,4
+    cmp ebx,5
     jb .extra_filter_loop
     jmp .bad
 .extra_filter_value:
@@ -543,6 +565,7 @@ build_view:
     mov qword [view_total],0
     mov qword [view_done],0
     mov qword [view_count],0
+    mov qword [view_trash],0
     mov rdi,[property_task+T_PARENT]
     test rdi,rdi
     jz .action
@@ -552,6 +575,8 @@ build_view:
     cmp byte [rax+8],1
     je .conflict
 .action:
+    cmp qword [view_action],5
+    je .find_trash
     cmp qword [view_action],1
     je .find_target
     cmp qword [view_action],2
@@ -562,6 +587,15 @@ build_view:
     test rax,rax
     jz .missing
     mov [view_target],rax
+    jmp .scan_start
+.find_trash:
+    mov rdi,[view_id]
+    call find_any_todo
+    test rax,rax
+    jz .missing
+    cmp byte [rax+8],2
+    jne .missing
+    mov [view_target],rax
 .scan_start:
     call get_todo_list
     mov rbx,rax
@@ -570,12 +604,19 @@ build_view:
     cmp qword [rbx],0
     je .next
     cmp byte [rbx+8],2
-    je .next
+    jne .live
+    inc qword [view_trash]
+    cmp qword [view_filter],7
+    je .query
+    jmp .next
+.live:
     inc qword [view_total]
     cmp byte [rbx+8],1
     jne .filter
     inc qword [view_done]
 .filter:
+    cmp qword [view_filter],7
+    je .next
     cmp qword [view_filter],6
     je .blocked
     cmp qword [view_filter],3

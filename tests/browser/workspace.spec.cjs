@@ -297,3 +297,34 @@ test('native subtasks and prerequisites prevent blocked completion without JavaS
     await expect(native.locator('#progress-percent')).toHaveText('100%');
   } finally { await context.close(); }
 });
+
+
+test('native undo, redo, trash restore and permanent removal work without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await add(native, 'Undo and restore milestone');
+    await native.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(0);
+    await native.getByRole('button', { name: 'Redo last change', exact: true }).click();
+    await expect(native.locator('.task-title')).toHaveText('Undo and restore milestone');
+    await menuAction(native, 'Undo and restore milestone', 'Delete');
+    await native.getByRole('button', { name: 'Delete task', exact: true }).click();
+    await native.getByRole('link', { name: /^Trash \(/ }).click();
+    await expect(native.locator('.task-title')).toHaveText('Undo and restore milestone');
+    await native.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(native.locator('.task-title')).toHaveText('Undo and restore milestone');
+    await menuAction(native, 'Undo and restore milestone', 'Delete');
+    await native.getByRole('button', { name: 'Delete task', exact: true }).click();
+    await native.getByRole('link', { name: /^Trash \(/ }).click();
+    await native.getByRole('link', { name: 'Purge', exact: true }).click();
+    await expect(native.getByRole('button', { name: 'Permanently remove', exact: true })).toBeVisible();
+    await native.screenshot({ path: info.outputPath('trash-confirmation.png'), fullPage: true });
+    await native.getByRole('button', { name: 'Permanently remove', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(0);
+    await expect(native.getByRole('button', { name: 'Undo last change', exact: true })).toBeDisabled();
+    await expect(native.getByRole('button', { name: 'Redo last change', exact: true })).toBeDisabled();
+  } finally { await context.close(); }
+});

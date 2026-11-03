@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern copy_string, html_escape, emit_number, strcmp, format_utc
 extern view_total, view_done, view_active, view_percent, view_count
+extern render_history, view_trash
 extern render_properties, property_task
 extern view_project, view_tag
 extern view_filter, view_sort, view_query, view_action, view_id, view_target
@@ -45,6 +46,9 @@ section .data
     name_project_url db 'project_url',0
     name_tag_url db 'tag_url',0
     name_blocked_current db 'blocked_current',0
+    name_trash db 'trash',0
+    name_trash_current db 'trash_current',0
+    name_history_panel db 'history_panel',0
     markers:
         dq name_total,emit_counter,view_total,0
         dq name_done,emit_counter,view_done,0
@@ -83,6 +87,9 @@ section .data
         dq name_project_url,emit_project_url,0,0
         dq name_tag_url,emit_tag_url,0,0
         dq name_blocked_current,emit_current,view_filter,6
+        dq name_trash,emit_counter,view_trash,0
+        dq name_trash_current,emit_current,view_filter,7
+        dq name_history_panel,render_history,0,0
         dq 0,0,0,0
     lit_page db 'page',0
     lit_false db 'false',0
@@ -96,7 +103,8 @@ section .data
     lit_upcoming db 'upcoming',0
     lit_overdue db 'overdue',0
     lit_blocked db 'blocked',0
-    filter_names dq lit_all,lit_active,lit_done,lit_today,lit_upcoming,lit_overdue,lit_blocked
+    lit_trash db 'trash',0
+    filter_names dq lit_all,lit_active,lit_done,lit_today,lit_upcoming,lit_overdue,lit_blocked,lit_trash
     view_all db 'All tasks',0
     view_active_name db 'In progress',0
     view_done_name db 'Completed',0
@@ -104,7 +112,8 @@ section .data
     view_upcoming_name db 'Next 7 days',0
     view_overdue_name db 'Overdue',0
     view_blocked_name db 'Blocked',0
-    view_names dq view_all,view_active_name,view_done_name,view_today_name,view_upcoming_name,view_overdue_name,view_blocked_name
+    view_trash_name db 'Trash',0
+    view_names dq view_all,view_active_name,view_done_name,view_today_name,view_upcoming_name,view_overdue_name,view_blocked_name,view_trash_name
     lit_newest db 'newest',0
     lit_oldest db 'oldest',0
     lit_az db 'az',0
@@ -126,6 +135,10 @@ section .data
     clear_form db '<h2 id="action-heading">Make room for what comes next?</h2><p>Completed tasks to delete: ',0
     clear_close db '. Active tasks stay on your list.</p><form action="/clear-done" method="post"><div class="dialog-actions"><a href="/app" class="secondary-button">Keep them</a><button class="danger-button">Clear completed</button></div></form></section>',0
     forget_form db '<h2 id="action-heading">Leave this workspace?</h2><p>Save your recovery key first. Without it, you cannot return after this browser forgets your workspace.</p><p><a href="/recovery" download>Save recovery key</a></p><form action="/forget" method="post"><div class="dialog-actions"><a href="/app" class="secondary-button">Stay here</a><button class="danger-button">Forget workspace</button></div></form></section>',0
+    purge_open db '<h2 id="action-heading">Permanently remove this trash?</h2><p>Undo will be cleared. Server backups may retain a copy.</p><p class="confirm-task">',0
+    purge_form db '</p><form action="/purge" method="post"><input type="hidden" name="id" value="',0
+    purge_close db '"><div class="dialog-actions"><a href="/app?f=trash" class="secondary-button">Keep in trash</a><button class="danger-button">Permanently remove</button></div></form></section>',0
+    empty_form db '<h2 id="action-heading">Empty all trash?</h2><p>Every retained trash item will be permanently removed and undo cleared. Server backups may retain copies.</p><form action="/empty-trash" method="post"><div class="dialog-actions"><a href="/app?f=trash" class="secondary-button">Keep in trash</a><button class="danger-button">Empty trash permanently</button></div></form></section>',0
 section .bss
     marker_buf resb 32
     date_buf resb 24
@@ -328,6 +341,10 @@ emit_action:
     je .delete
     cmp qword [view_action],3
     je .clear
+    cmp qword [view_action],5
+    je .purge
+    cmp qword [view_action],6
+    je .empty
     mov rsi,forget_form
     call copy_string
     jmp .done
@@ -360,6 +377,23 @@ emit_action:
     mov rax,[view_id]
     call emit_number
     mov rsi,delete_close
+    call copy_string
+    jmp .done
+.purge:
+    mov rbx,[view_target]
+    mov rsi,purge_open
+    call copy_string
+    lea rsi,[rbx+17]
+    call html_escape
+    mov rsi,purge_form
+    call copy_string
+    mov rax,[view_id]
+    call emit_number
+    mov rsi,purge_close
+    call copy_string
+    jmp .done
+.empty:
+    mov rsi,empty_form
     call copy_string
     jmp .done
 .clear:
