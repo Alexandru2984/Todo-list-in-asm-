@@ -81,7 +81,7 @@ preflight runs before deployment replaces binaries.
 Local verification passed 140 native/protocol/proxy/SEO tests. The actual service
 sandbox passed the expanded fresh-workspace probe, and independently extracted
 native backups preserved planner metadata through a sandboxed restart. Production
-and final remote CI evidence belongs in RELEASE.md after rollout. These checks
+and remote CI verification also passed; evidence is recorded in RELEASE.md. These checks
 do not establish memory safety or absence of vulnerabilities: the NASM binary
 remains non-PIE, bearer-key access has no revocation, aggregate anonymous disk
 usage lacks a quota, and off-host encrypted backups/external alerts still require

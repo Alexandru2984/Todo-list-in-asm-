@@ -31,7 +31,7 @@ commit without assistant/coauthor credits.
   free text; strict operator/date validation; reuse the native Unicode matcher.
 - [x] Calendar/board/insights: native month navigation/day counts, native workflow
   movement, a private SVG chart with UTC daily completion buckets and streaks.
-- [ ] Release: local protocol/storage/migration/backup tests, browser/mobile/
+- [x] Release: local protocol/storage/migration/backup tests, browser/mobile/
   no-JavaScript/axe tests, remote GitHub Actions green, sandboxed production
   rollout, fresh-workspace HTTPS probes and a verified isolated restore drill.
 
@@ -138,3 +138,12 @@ or compliance guarantee is inferred from this repository.
   a 7 MiB wire envelope, unchanged 4095-byte headers, a single global import slot
   in nginx and the native service, and an 8 MiB response buffer. Ordinary requests
   keep their 4095-byte envelope. The prior full browser run passed all 32 cases.
+
+- Final release: GitHub Actions 41737981261 passed both jobs with 140 integration
+  tests and 32 browser cases; local final runs matched. Exact systemd sandbox,
+  native V3 backup/restore and actual older-reader downgrade drills passed.
+  Production direct/HTTPS probes and a public mobile browser without JavaScript
+  passed. Existing task-file hashes/count matched the private baseline, and the
+  actual scheduled backup service/archive passed independent restore validation.
+  The deployed binary matches the tested build; timer and service are active.
+  Full evidence and remaining operator limits are recorded in RELEASE.md.

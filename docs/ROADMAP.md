@@ -27,7 +27,7 @@ constraint; no framework or interpreter backend should be introduced.
 
 ## Release 3 — native planner
 
-Implemented under the [delivery plan](PLANNER-PLAN.md): priorities/due dates,
+Released on 2026-11-04 under the [delivery plan](PLANNER-PLAN.md): priorities/due dates,
 UTC date views, daily/weekday/weekly/monthly/yearly recurrence with anchors,
 projects/tags, subtasks/prerequisites, structured search, workspace undo/redo,
 recoverable trash, native calendar/board, private SVG activity and JSON/CSV
