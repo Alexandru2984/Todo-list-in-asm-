@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import threading
 import unittest
 
 BINARY = Path(__file__).resolve().parents[1]/'build/backup'
@@ -152,6 +153,29 @@ class NativeBackupTests(unittest.TestCase):
         with tarfile.open(archive) as reader:
             for name,data in records.items():
                 self.assertEqual(reader.extractfile(name).read(),data)
+
+    def test_hot_backup_keeps_a_complete_immutable_inode_during_replacement(self):
+        path = self.data/self.name
+        alternatives = [b'A'*131072,b'B'*131072]
+        path.write_bytes(alternatives[0])
+        stopped = threading.Event()
+        def replace():
+            index = 0
+            while not stopped.is_set():
+                temporary = self.data/'replacement.tmp'
+                temporary.write_bytes(alternatives[index % 2])
+                os.replace(temporary,path)
+                index += 1
+        worker = threading.Thread(target=replace)
+        worker.start()
+        try:
+            for _ in range(10):
+                archive = self.create()
+                self.assertEqual(self.run_backup('--verify',archive).returncode,0)
+                with tarfile.open(archive) as reader:
+                    self.assertIn(reader.extractfile(self.name).read(),alternatives)
+        finally:
+            stopped.set();worker.join(timeout=5)
 
     def test_exhausted_write_limit_does_not_publish_or_prune(self):
         self.out.mkdir()

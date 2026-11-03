@@ -380,7 +380,7 @@ read_data:
     cmp eax,0100000o
     jne fail
     cmp qword [stat_buf+16],1
-    jne fail
+    ja fail ; nlink=0 is valid when an atomic replacement unlinks our pinned inode
     mov r12,[stat_buf+48]
     cmp r12,FILE_MAX
     ja fail
@@ -741,7 +741,7 @@ verify_archive:
     cmp eax,0100000o
     jne fail
     cmp qword [stat_buf+16],1
-    jne fail
+    ja fail ; nlink=0 is valid when an atomic replacement unlinks our pinned inode
     call reset_manifest
 .header:
     mov rdi,[archive_fd]
