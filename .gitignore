@@ -6,3 +6,8 @@ data/
 core
 *.log
 debug_*.sh
+*.bak-*
+build/
+test-results/
+playwright-report/
+node_modules/
