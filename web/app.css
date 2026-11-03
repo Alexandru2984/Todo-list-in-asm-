@@ -27,3 +27,5 @@ dialog{background:var(--surface);color:var(--ink);border:1px solid var(--border)
 .task-reference,.blocked-badge{font-size:11px;color:var(--muted);overflow-wrap:anywhere;max-width:100%}.blocked-badge{color:var(--danger)}.task-actions button:disabled{cursor:not-allowed}
 
 .history-panel{max-width:none;margin:24px 0}.history-panel h2{font-size:18px}.history-panel form{margin:0}.activity-list{padding-left:20px;font-size:12px;color:var(--muted)}.activity-list li{margin:7px 0;overflow-wrap:anywhere}.activity-list time{font-variant-numeric:tabular-nums}.trashed .task-title{color:var(--muted)}.task-actions form[action="/restore-task"] button{font-size:12px;padding:7px 10px;min-height:44px}.task-actions>a{display:inline-flex;align-items:center;min-height:44px;padding:7px 10px;text-decoration:none}
+
+.query-hint{font-size:12px;color:var(--muted);overflow-wrap:anywhere}

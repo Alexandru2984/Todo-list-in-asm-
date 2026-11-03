@@ -108,3 +108,21 @@ trash makes that child a root task. Permanent removal requires confirmation,
 detaches references and clears undo. Empty trash applies to every trash item.
 Server backups and private release snapshots may still retain copies. See the
 [history storage contract](STORAGE-HISTORY.md) for the exact retention boundary.
+
+## Structured search
+
+Search accepts up to 255 UTF-8 bytes. Plain terms combine with AND, in any order;
+double quotes keep a contiguous phrase together. Exact native metadata predicates
+are `priority:normal|low|high|urgent`, `status:active|done|blocked|trash`,
+`project:"My work"`, `tag:asm` or `#asm`, and `before:YYYY-MM-DD`,
+`after:YYYY-MM-DD`, `on:YYYY-MM-DD`. Before/after are exclusive and require an
+assigned due date. An empty quoted project matches unassigned tasks. Metadata
+predicates also combine with the normal project/tag/status/date controls.
+
+There is one predicate per scalar field, up to eight tag predicates and 64 free
+terms. Duplicate scalar predicates, invalid dates/values, overlong metadata and
+unclosed operator quotes fail. Quoted values can escape quotes/backslashes.
+An unmatched quote in ordinary free text remains literal; an unknown prefix is
+literal searchable text. Quote a phrase to search a known operator name literally.
+Status trash includes retained trash when the outer view is All or Trash; an
+incompatible outer status view yields no matches. Counters remain global.

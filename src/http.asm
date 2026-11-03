@@ -15,7 +15,7 @@ section .data
     form_type db 'application/x-www-form-urlencoded',0
 section .bss
     request_method resq 1 ; 1 GET, 2 POST, 3 HEAD, 4 other
-    request_path resb 1024
+    request_path resb PATH_MAX
     request_body resq 1
     request_host resb 256
     request_cookie resb 1024
@@ -200,7 +200,7 @@ validate_request:
     je .bad
     cmp al,'#'
     je .bad
-    cmp rcx,1023
+    cmp rcx,PATH_MAX-1
     jae .large
     mov [request_path+rcx],al
     inc rcx

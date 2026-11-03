@@ -70,7 +70,7 @@ class NativeViewTests(unittest.TestCase):
     def test_query_names_values_duplicates_and_invalid_utf8_fail_closed(self):
         for query in ['f=bad','sort=bad','xq=a','q=%ff','q=%00','q=%0a','q=%',
                       'q=a&q=b','f=all&f=done','sort=az&sort=oldest','edit=0',
-                      'edit=1&delete=2','confirm=bad','q='+('x'*111),'q=a&','q']:
+                      'edit=1&delete=2','confirm=bad','q='+('x'*256),'q=a&','q']:
             with self.subTest(query=query):
                 self.assertEqual(self.get(query)[0], 400)
 

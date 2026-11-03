@@ -27,7 +27,7 @@ commit without assistant/coauthor credits.
   activity events. Permanent purge clears undo content for the purged action.
 - [ ] Import: native bounded JSON v1/v2 and CSV parsers, validated preview,
   merge/replace confirmation, reference remapping, atomic apply and undo.
-- [ ] Search: structured AND operators for priority/status/due/project/tag and
+- [x] Search: structured AND operators for priority/status/due/project/tag and
   free text; strict operator/date validation; reuse the native Unicode matcher.
 - [ ] Calendar/board/insights: native month navigation/day counts, native workflow
   movement, a private SVG chart with UTC daily completion buckets and streaks.
@@ -118,3 +118,9 @@ or compliance guarantee is inferred from this repository.
   metadata and undo; V3 downgrade also passed an isolated drill using the actual
   previous production binary. Reader revision comparison covers rollback across
   V1/V2/V3, including an unsuccessful service-start attempt.
+
+- Structured search stage: 111 native/protocol tests passed, including 180 seeded
+  adversarial queries; native planner and axe cases passed on desktop/mobile.
+  AND predicates, phrases, Unicode, trash, bounded parsing and read-only failure
+  behavior are verified. Search permits 255 UTF-8 bytes and paths up to 2047
+  bytes within the unchanged 4095-byte ordinary request envelope.

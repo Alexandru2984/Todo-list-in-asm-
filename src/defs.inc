@@ -79,6 +79,8 @@
 %define REQUEST_MAX   4095
 %define TASK_MAX      1000
 %define TITLE_MAX     110
+%define QUERY_MAX     255
+%define PATH_MAX      2048
 
 ; Shared planner ABI. The original ID/status/created/title prefix stays intact.
 %define SLOT_MAX      1200

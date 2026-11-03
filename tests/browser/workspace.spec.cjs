@@ -240,6 +240,9 @@ test('planner priority, due dates and recurrence work without JavaScript on mobi
     await native.getByRole('textbox', { name: 'Tag filter', exact: true }).fill('MOBILE');
     await native.getByRole('button', { name: 'Apply project filters' }).click();
     await expect(native.locator('#task-list > li')).toHaveCount(1);
+    await native.getByRole('searchbox', { name: 'Search tasks' }).fill('priority:urgent project:"ședință" #mobile "Native planner"');
+    await native.getByRole('searchbox', { name: 'Search tasks' }).press('Enter');
+    await expect(native.locator('#task-list > li')).toHaveCount(1);
     await expect(native.locator('.due-badge')).toHaveText('Due 2027-02-28');
     await menuAction(native, 'Native planner milestone', 'Edit');
     const edit = native.locator('#action-form');

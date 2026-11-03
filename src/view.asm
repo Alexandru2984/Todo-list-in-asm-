@@ -6,12 +6,14 @@ extern today_epoch
 extern tag_contains
 extern task_ready, property_task
 extern find_any_todo
+extern compile_query, query_matches, query_status
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
  global view_id, view_target, unicode_compare
 global view_project, view_tag
 global view_trash
+global unicode_contains
 section .data
     key_filter db 'f',0
     key_sort db 'sort',0
@@ -45,7 +47,7 @@ section .data
 section .bss
     view_filter resq 1
     view_sort resq 1
-    view_query resb TITLE_MAX+1
+    view_query resb QUERY_MAX+1
     view_project resb PROJECT_MAX+1
     view_tag resb 25
     view_action resq 1 ; 0 list, 1 edit, 2 confirm delete, 3 clear, 4 forget
@@ -304,7 +306,7 @@ parse_view:
     or qword [view_flags],4
     mov rdi,decode_buf
     call strlen
-    cmp rax,TITLE_MAX
+    cmp rax,QUERY_MAX
     ja .bad
     lea rcx,[rax+1]
     mov rsi,decode_buf
@@ -355,7 +357,8 @@ parse_view:
     mov rbx,r13
     jmp .field
 .ok:
-    xor eax,eax
+    mov rdi,view_query
+    call compile_query
     jmp .done
 .bad:
     mov rax,-400
@@ -450,6 +453,7 @@ unicode_compare:
     movsxd rax,r11d
     ret
 
+unicode_contains:
 contains:
     push rbx
     push r12
@@ -608,6 +612,10 @@ build_view:
     inc qword [view_trash]
     cmp qword [view_filter],7
     je .query
+    cmp qword [query_status],3
+    jne .next
+    cmp qword [view_filter],0
+    je .query
     jmp .next
 .live:
     inc qword [view_total]
@@ -677,9 +685,8 @@ build_view:
     test rax,rax
     jz .next
 .title_query:
-    lea rdi,[rbx+17]
-    mov rsi,view_query
-    call contains
+    mov rdi,rbx
+    call query_matches
     test eax,eax
     jz .next
     mov rax,[view_count]

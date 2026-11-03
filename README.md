@@ -20,6 +20,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Native subtasks and up to eight prerequisites, combined cycle checks, blocked
   task view and server-enforced completion rules.
 - Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
+- Native structured AND search for priority/status/dates/projects/tags, quoted
+  phrases and exact metadata matching.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.
