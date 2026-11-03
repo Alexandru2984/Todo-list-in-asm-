@@ -2,7 +2,7 @@
 DEFAULT ABS
 extern todos, todo_count, lookup_array, save_snapshot, format_line, line_buf
 extern format_metadata, validate_metadata_graph, split_field, parse_uint
-extern itoa, write_all, copy_string, emit_number, format_utc
+extern itoa, write_all, copy_string, emit_number, format_utc, render_template
 
 global history_reset, history_prepare, history_parse, history_validate, history_write
  global history_complete, history_clear_undo, undo_workspace, history_event
@@ -25,17 +25,17 @@ section .data
     op_names dq op_add,op_edit,op_complete,op_reopen,op_trash,op_clear
              dq op_restore,op_purge,op_import,op_stage,op_undo,op_redo
     history_open db '<section class="workspace-tools history-panel" aria-labelledby="history-heading"><h2 id="history-heading">Recent changes</h2><div class="export-actions">',0
-    undo_form db '<form method="post" action="/undo"><button class="secondary-button"',0
-    redo_form db '<form method="post" action="/redo"><button class="secondary-button"',0
+    undo_form db '<form method="post" action="{{mutation_prefix}}/undo"><button class="secondary-button"',0
+    redo_form db '<form method="post" action="{{mutation_prefix}}/redo"><button class="secondary-button"',0
     disabled db ' disabled',0
     undo_close db '>Undo last change</button></form>',0
     redo_close db '>Redo last change</button></form>',0
-    activity_open db '</div><p>One reversible workspace change. Permanent purge clears undo.</p><ol class="activity-list">',0
+    activity_open db '</div><p>One reversible workspace change. Permanent purge clears undo.</p><details class="recent-log"><summary>View recent activity</summary><ol class="activity-list">',0
     activity_row db '<li><time>',0
     activity_op db '</time> <span>',0
     activity_id db ' · task #',0
     activity_close db '</span></li>',0
-    history_close db '</ol></section>',0
+    history_close db '</ol></details></section>',0
 section .bss
     undo_todos resb SLOT_MAX*TASK_SIZE
     metrics resq 90*2 ; day/count, indexed by day modulo 90
@@ -519,7 +519,7 @@ render_history:
     mov rsi,history_open
     call copy_string
     mov rsi,undo_form
-    call copy_string
+    call render_template
     cmp qword [undo_mode],1
     je .undo
     mov rsi,disabled
@@ -528,7 +528,7 @@ render_history:
     mov rsi,undo_close
     call copy_string
     mov rsi,redo_form
-    call copy_string
+    call render_template
     cmp qword [undo_mode],2
     je .redo
     mov rsi,disabled

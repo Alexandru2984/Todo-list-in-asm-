@@ -126,3 +126,28 @@ An unmatched quote in ordinary free text remains literal; an unknown prefix is
 literal searchable text. Quote a phrase to search a known operator name literally.
 Status trash includes retained trash when the outer view is All or Trash; an
 incompatible outer status view yields no matches. Counters remain global.
+
+## Calendar, board and activity
+
+Choose List, Board or Calendar above the filters. Calendar uses a native
+Monday-first six-week grid with Gregorian month navigation from 1970 through
+9999. Counts follow the current task filters and include completed tasks when
+those filters include them. Selecting a day opens its due tasks in List. The
+month selector resets a selected day so another month can be explored. Global
+workspace counters stay global. January 1, 1970 has no assignable due date because
+zero is the existing no-date sentinel.
+
+Board groups active tasks into To do/In progress, plus a Done column. The native
+menu can Start work or Move to To do. Complete/Reopen retain their prerequisite,
+parent and recurrence rules. Board mutation aliases are explicitly allowlisted
+and preserve the board after redirects; unknown paths, extra fields, cross-origin
+requests and missing sessions receive the usual validation. Changes to workflow
+stage support undo/redo. Mobile stacks columns without horizontal scrolling.
+
+Your momentum shows completions in the last 7/30 UTC days and a current streak
+ending today or yesterday, bounded to 90 recorded days. The private SVG plots the
+last 30 days, using only bounded numeric counts and generated dates. Every SVG
+request requires its own workspace cookie, sends no-store/noindex and discloses
+no task titles or access key. GET/calendar/chart requests never rewrite data.
+Legacy completed tasks do not invent activity; new completion actions increment
+one bucket. Undo/redo swaps the activity buckets with the task snapshot.

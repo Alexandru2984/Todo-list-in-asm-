@@ -10,10 +10,12 @@ global handle_request, current_uid, send_error, copy_string, html_escape, emit_n
 global decode_value, decode_buf, decode_stripped
 extern parse_view, build_view, render_template, view_rows, view_count, format_utc
 extern duplicate_todo
-extern export_json, export_csv
+extern export_json, export_csv, export_stats_svg
 extern reset_properties, parse_property, property_flags, property_task
 extern render_properties, render_task_badges
 extern undo_workspace, restore_todo, purge_todo, empty_trash
+extern view_layout, render_board_start, render_board_end, emit_mutation_prefix
+extern change_stage
 extern task_ready
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
@@ -38,6 +40,10 @@ section .data
     empty db 0
     private_headers db 'X-Robots-Tag: noindex, nofollow',13,10,0
     method_headers db 'Allow: GET, HEAD, POST',13,10,'X-Robots-Tag: noindex, nofollow',13,10,0
+    board_location db 'Location: /app?layout=board',13,10,'X-Robots-Tag: noindex, nofollow',13,10,0
+    board_route_prefix db '/board/',0
+    start_work_path db '/start-work',0
+    to_do_path db '/to-do',0
     app_location db 'Location: /app',13,10,'X-Robots-Tag: noindex, nofollow',13,10,0
     home_location db 'Location: /',13,10,0
     session_prefix db 'Location: /app',13,10,'X-Robots-Tag: noindex, nofollow',13,10,'Set-Cookie: asm_uid=',0
@@ -48,6 +54,7 @@ section .data
     http db 'http://',0
     same_origin db 'same-origin',0
     fetch_none db 'none',0
+    stats_path db '/stats.svg',0
     export_json_path db '/export.json',0
     export_csv_path db '/export.csv',0
     mime_csv db 'text/csv; charset=utf-8',0
@@ -101,12 +108,12 @@ section .data
     close_time db '</time>',0
     li_date db '</span><time class="task-date">',0
     menu_open db '<details class="task-menu"><summary aria-label="More task actions">&#8943;</summary><div class="task-menu-items"><a data-edit href="/app?edit=',0
-    menu_edit_end db '#action-form">Edit</a>',0
+    menu_edit_end db '&amp;layout={{layout}}#action-form">Edit</a>',0
     menu_subtask db '<a href="/app?newparent=',0
-    menu_subtask_end db '#new-title">Add subtask</a>',0
-    menu_duplicate_start db '<form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
+    menu_subtask_end db '&amp;layout={{layout}}#new-title">Add subtask</a>',0
+    menu_duplicate_start db '<form method="post" action="{{mutation_prefix}}/duplicate"><input type="hidden" name="id" value="',0
     menu_duplicate_end db '"><button>Duplicate</button></form><a class="delete-button" href="/app?delete=',0
-    menu_end db '#action-form">Delete</a></div></details></div></li>',10,0
+    menu_end db '&amp;layout={{layout}}#action-form">Delete</a></div></details></div></li>',10,0
     undo_path db '/undo',0
     redo_path db '/redo',0
     restore_task_path db '/restore-task',0
@@ -115,8 +122,8 @@ section .data
     duplicate_path db '/duplicate',0
     app_query db '/app?',0
     edit_open db '<button type="button" data-edit aria-label="Edit task">Edit</button>',0
-    complete_open db '<form method="post" action="/complete"><input type="hidden" name="id" value="',0
-    reopen_open db '<form method="post" action="/reopen"><input type="hidden" name="id" value="',0
+    complete_open db '<form method="post" action="{{mutation_prefix}}/complete"><input type="hidden" name="id" value="',0
+    reopen_open db '<form method="post" action="{{mutation_prefix}}/reopen"><input type="hidden" name="id" value="',0
     complete_close db '"><button aria-label="Complete task">Done</button></form>',0
     blocked_complete_close db '"><button aria-label="Complete task" disabled title="Complete prerequisites and subtasks first">Blocked</button></form>',0
     reopen_close db '"><button aria-label="Reopen task">Reopen</button></form>',0
@@ -181,6 +188,7 @@ section .data
     path_14 db '/delete',0
     path_15 db '/edit',0
     path_16 db '/clear-done',0
+    board_aliases dq path_11,path_12,path_13,path_14,path_15,path_16,duplicate_path,undo_path,redo_path,start_work_path,to_do_path,0
 section .bss
     current_uid resb 64
     res_buf resb RESPONSE_MAX
@@ -193,6 +201,7 @@ section .bss
     form_token resb 64
     form_id resq 1
     decode_stripped resq 1
+    return_board resq 1
     form_flags resq 1
     decode_buf resb REQUEST_MAX+1
 section .text
@@ -790,6 +799,9 @@ session_redirect:
     jmp redirect
 redirect_app:
     mov r9,app_location
+    cmp qword [return_board],0
+    je redirect
+    mov r9,board_location
 redirect:
     mov rdi,r12
     mov rsi,empty
@@ -804,6 +816,9 @@ handle_request:
     push r13
     mov r12,rdi
     call parse_cookie
+    test rax,rax
+    js .error
+    call normalize_board_path
     test rax,rax
     js .error
     cmp qword [request_method],2
@@ -824,6 +839,11 @@ handle_request:
     call strcmp
     test rax,rax
     jz .method
+    mov rdi,request_path
+    mov rsi,stats_path
+    call strcmp
+    test rax,rax
+    jz .get_stats
     mov rdi,request_path
     mov rsi,export_json_path
     call strcmp
@@ -890,6 +910,16 @@ handle_request:
     call strncmp
     test rax,rax
     jz .legacy
+    mov rdi,request_path
+    mov rsi,start_work_path
+    call strcmp
+    test rax,rax
+    jz .method
+    mov rdi,request_path
+    mov rsi,to_do_path
+    call strcmp
+    test rax,rax
+    jz .method
     mov rdi,request_path
     mov rsi,undo_path
     call strcmp
@@ -999,6 +1029,16 @@ handle_request:
     cmp byte [current_uid],0
     je .unauthorized
     mov rdi,request_path
+    mov rsi,start_work_path
+    call strcmp
+    test rax,rax
+    jz .post_start_work
+    mov rdi,request_path
+    mov rsi,to_do_path
+    call strcmp
+    test rax,rax
+    jz .post_to_do
+    mov rdi,request_path
     mov rsi,undo_path
     call strcmp
     test rax,rax
@@ -1059,6 +1099,9 @@ handle_request:
     test rax,rax
     jz .post_clear
     jmp .missing
+.get_stats:
+    mov r13,export_stats_svg
+    jmp .get_export
 .get_export_json:
     mov r13,export_json
     jmp .get_export
@@ -1085,6 +1128,10 @@ handle_request:
     mov r8,mime_json
     mov r9,json_headers
     cmp r13,export_json
+    je .export_send
+    mov r8,mime_svg
+    mov r9,private_headers
+    cmp r13,export_stats_svg
     je .export_send
     mov r8,mime_csv
     mov r9,csv_headers
@@ -1195,6 +1242,24 @@ handle_request:
     call unlock_user_file
     call redirect_app
     jmp .done
+.post_start_work:
+    mov r13d,1
+    jmp .post_workflow
+.post_to_do:
+    xor r13d,r13d
+.post_workflow:
+    cmp qword [form_flags],2
+    jne .bad
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    test rax,rax
+    js .unlock_error
+    mov rdi,[form_id]
+    mov rsi,r13
+    call change_stage
+    jmp .finish_mutation
 .post_undo:
     mov r13d,1
     jmp .post_history
@@ -1435,6 +1500,7 @@ handle_request:
     mov rdi,res_buf
     mov rsi,draft_open
     call copy_string
+    call emit_mutation_prefix
     mov rsi,draft_add
     cmp qword [form_flags],3
     jne .draft_action
@@ -1533,17 +1599,35 @@ render_app:
     push rbx
     push r13
     push r14
+    push r15
     mov rdi,res_buf
     mov rsi,app_head
     call render_template
     test rax,rax
     js .template_error
+    xor r15d,r15d
+.column:
+    cmp qword [view_layout],1
+    jne .rows
+    mov rsi,r15
+    call render_board_start
+.rows:
     mov r14,view_rows
     mov r13,[view_count]
 .loop:
     test r13,r13
-    jz .footer
+    jz .column_end
     mov rbx,[r14]
+    cmp qword [view_layout],1
+    jne .row
+    mov rax,[rbx+T_STAGE]
+    cmp byte [rbx+8],1
+    jne .stage
+    mov eax,2
+.stage:
+    cmp rax,r15
+    jne .next_row
+.row:
     mov rsi,li_open
     call copy_string
     mov rax,[rbx]
@@ -1589,7 +1673,7 @@ render_app:
     jne .action
     mov rsi,reopen_open
 .action:
-    call copy_string
+    call render_template
     mov rax,[rbx]
     call emit_number
     mov rsi,complete_close
@@ -1613,7 +1697,7 @@ render_app:
     mov rax,[rbx]
     call emit_number
     mov rsi,menu_edit_end
-    call copy_string
+    call render_template
     cmp byte [rbx+8],1
     je .duplicate_action
     mov rsi,menu_subtask
@@ -1621,10 +1705,29 @@ render_app:
     mov rax,[rbx]
     call emit_number
     mov rsi,menu_subtask_end
-    call copy_string
+    call render_template
 .duplicate_action:
-    mov rsi,menu_duplicate_start
+    cmp qword [view_layout],1
+    jne .duplicate_form
+    cmp byte [rbx+8],0
+    jne .duplicate_form
+    mov rsi,work_start_open
+    cmp qword [rbx+T_STAGE],0
+    je .work_open
+    mov rsi,work_todo_open
+.work_open:
     call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,work_start_close
+    cmp qword [rbx+T_STAGE],0
+    je .work_close
+    mov rsi,work_todo_close
+.work_close:
+    call copy_string
+.duplicate_form:
+    mov rsi,menu_duplicate_start
+    call render_template
     mov rax,[rbx]
     call emit_number
     mov rsi,menu_duplicate_end
@@ -1632,7 +1735,7 @@ render_app:
     mov rax,[rbx]
     call emit_number
     mov rsi,menu_end
-    call copy_string
+    call render_template
     jmp .next_row
 .trash_actions:
     mov rsi,restore_task_open
@@ -1649,6 +1752,13 @@ render_app:
     add r14,8
     dec r13
     jmp .loop
+.column_end:
+    cmp qword [view_layout],1
+    jne .footer
+    call render_board_end
+    inc r15
+    cmp r15,3
+    jb .column
 .footer:
     mov rsi,app_foot
     call render_template
@@ -1668,6 +1778,7 @@ render_app:
     mov rsi,r12
     call send_error
 .done:
+    pop r15
     pop r14
     pop r13
     pop rbx
@@ -1675,3 +1786,53 @@ render_app:
 
 section .data
     legacy_prefix db '/?uid=',0
+
+section .data
+    work_start_open db '<form method="post" action="/board/start-work"><input type="hidden" name="id" value="',0
+    work_todo_open db '<form method="post" action="/board/to-do"><input type="hidden" name="id" value="',0
+    work_start_close db '"><button>Start work</button></form>',0
+    work_todo_close db '"><button>Move to To do</button></form>',0
+section .text
+; Explicit board aliases keep native mutation responses in the board. Unknown
+; paths remain unknown; session, export and import paths have no board alias.
+normalize_board_path:
+    push rbx
+    push r12
+    mov qword [return_board],0
+    mov rdi,request_path
+    mov rsi,board_route_prefix
+    mov edx,7
+    call strncmp
+    test rax,rax
+    jnz .ok
+    mov rbx,board_aliases
+.find:
+    cmp qword [rbx],0
+    je .ok
+    mov rdi,request_path+6
+    mov rsi,[rbx]
+    call strcmp
+    test rax,rax
+    jz .found
+    add rbx,8
+    jmp .find
+.found:
+    cmp qword [request_method],2
+    jne .method
+    mov rdi,request_path+6
+    call strlen
+    lea rcx,[rax+1]
+    mov rsi,request_path+6
+    mov rdi,request_path
+    rep movsb
+    mov qword [return_board],1
+    mov qword [view_layout],1
+.ok:
+    xor eax,eax
+    jmp .done
+.method:
+    mov rax,-405
+.done:
+    pop r12
+    pop rbx
+    ret

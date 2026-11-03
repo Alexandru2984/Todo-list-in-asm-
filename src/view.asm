@@ -7,6 +7,8 @@ extern tag_contains
 extern task_ready, property_task
 extern find_any_todo
 extern compile_query, query_matches, query_status
+extern init_layout, parse_layout_field, prepare_layout
+extern view_layout, view_day, month_start, month_end
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
@@ -69,6 +71,9 @@ parse_view:
     push rbx
     push r12
     push r13
+    push rdi
+    call init_layout
+    pop rdi
     mov qword [view_filter],0
     mov qword [view_sort],0
     mov qword [view_action],0
@@ -167,7 +172,7 @@ parse_view:
     mov rsi,key_confirm
     call strcmp
     test rax,rax
-    jnz .bad
+    jnz .layout
     test qword [view_flags],8
     jnz .bad
     or qword [view_flags],8
@@ -190,6 +195,14 @@ parse_view:
     test rax,rax
     jnz .bad
     mov qword [view_action],6
+    jmp .next
+.layout:
+    mov rdi,rbx
+    mov rsi,decode_buf
+    call parse_layout_field
+    test rax,rax
+    js .done
+    jz .bad
     jmp .next
 .clear:
     mov qword [view_action],3
@@ -359,6 +372,9 @@ parse_view:
 .ok:
     mov rdi,view_query
     call compile_query
+    test rax,rax
+    js .done
+    call prepare_layout
     jmp .done
 .bad:
     mov rax,-400
@@ -669,6 +685,22 @@ build_view:
     cmp rax,rdx
     ja .next
 .query:
+    cmp qword [view_day],0
+    je .month
+    mov rax,[view_day]
+    cmp [rbx+T_DUE],rax
+    jne .next
+.month:
+    cmp qword [view_layout],2
+    jne .project
+    mov rax,[rbx+T_DUE]
+    test rax,rax
+    jz .next
+    cmp rax,[month_start]
+    jb .next
+    cmp rax,[month_end]
+    jae .next
+.project:
     cmp byte [view_project],0
     je .tag
     lea rdi,[rbx+T_PROJECT]

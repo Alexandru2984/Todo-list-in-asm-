@@ -2,11 +2,15 @@
 DEFAULT ABS
 extern copy_string, html_escape, emit_number, strcmp, format_utc
 extern view_total, view_done, view_active, view_percent, view_count
+extern render_insights
 extern render_history, view_trash
 extern render_properties, property_task
 extern view_project, view_tag
 extern view_filter, view_sort, view_query, view_action, view_id, view_target
 
+extern render_calendar_panel, view_layout, view_month, view_day
+extern emit_layout, emit_list_class, emit_mutation_prefix
+global emit_filter, emit_sort, emit_url_text
 global render_template
 section .data
     name_total db 'total',0
@@ -49,6 +53,19 @@ section .data
     name_trash db 'trash',0
     name_trash_current db 'trash_current',0
     name_history_panel db 'history_panel',0
+    name_layout db 'layout',0
+    name_list_class db 'list_class',0
+    name_mutation_prefix db 'mutation_prefix',0
+    name_month db 'month',0
+    name_day db 'day',0
+    name_calendar_panel db 'calendar_panel',0
+    name_list_current db 'list_current',0
+    name_board_current db 'board_current',0
+    name_calendar_current db 'calendar_current',0
+    name_insights_panel db 'insights_panel',0
+    name_day_banner db 'day_banner',0
+    day_banner_open db '<p class="query-hint">Due on ',0
+    day_banner_close db ' UTC. <a href="/app">Reset filters</a></p>',0
     markers:
         dq name_total,emit_counter,view_total,0
         dq name_done,emit_counter,view_done,0
@@ -90,6 +107,17 @@ section .data
         dq name_trash,emit_counter,view_trash,0
         dq name_trash_current,emit_current,view_filter,7
         dq name_history_panel,render_history,0,0
+        dq name_layout,emit_layout,0,0
+        dq name_list_class,emit_list_class,0,0
+        dq name_mutation_prefix,emit_mutation_prefix,0,0
+        dq name_month,emit_month,0,0
+        dq name_day,emit_day,0,0
+        dq name_calendar_panel,render_calendar_panel,0,0
+        dq name_list_current,emit_current,view_layout,0
+        dq name_board_current,emit_current,view_layout,1
+        dq name_calendar_current,emit_current,view_layout,2
+        dq name_insights_panel,render_insights,0,0
+        dq name_day_banner,emit_day_banner,0,0
         dq 0,0,0,0
     lit_page db 'page',0
     lit_false db 'false',0
@@ -126,14 +154,14 @@ section .data
     fresh_description db 'Add your first task above. Every good day starts with one small step.',0
     filtered_description db 'No tasks match this view. Try another filter or a different search.',0
     action_open db '<section class="native-action" id="action-form" aria-labelledby="action-heading">',0
-    edit_open db '<h2 id="action-heading">A fresh way to put it.</h2><form action="/edit" method="post"><input type="hidden" name="id" value="',0
+    edit_open db '<h2 id="action-heading">A fresh way to put it.</h2><form action="{{mutation_prefix}}/edit" method="post"><input type="hidden" name="id" value="',0
     edit_title db '"><label for="edit-title">Task title</label><input id="edit-title" name="title" required maxlength="110" value="',0
     edit_close db '"><p class="input-hint">Up to 110 UTF-8 bytes.</p><div class="dialog-actions"><a href="/app" class="secondary-button">Cancel</a><button class="primary-button">Save changes</button></div></form></section>',0
     delete_open db '<h2 id="action-heading">Let this one go?</h2><p>Move this task and its subtasks to trash:</p><p class="confirm-task">',0
-    delete_form db '</p><form action="/delete" method="post"><input type="hidden" name="id" value="',0
+    delete_form db '</p><form action="{{mutation_prefix}}/delete" method="post"><input type="hidden" name="id" value="',0
     delete_close db '"><div class="dialog-actions"><a href="/app" class="secondary-button">Keep it</a><button class="danger-button">Delete task</button></div></form></section>',0
     clear_form db '<h2 id="action-heading">Make room for what comes next?</h2><p>Completed tasks to delete: ',0
-    clear_close db '. Active tasks stay on your list.</p><form action="/clear-done" method="post"><div class="dialog-actions"><a href="/app" class="secondary-button">Keep them</a><button class="danger-button">Clear completed</button></div></form></section>',0
+    clear_close db '. Active tasks stay on your list.</p><form action="{{mutation_prefix}}/clear-done" method="post"><div class="dialog-actions"><a href="/app" class="secondary-button">Keep them</a><button class="danger-button">Clear completed</button></div></form></section>',0
     forget_form db '<h2 id="action-heading">Leave this workspace?</h2><p>Save your recovery key first. Without it, you cannot return after this browser forgets your workspace.</p><p><a href="/recovery" download>Save recovery key</a></p><form action="/forget" method="post"><div class="dialog-actions"><a href="/app" class="secondary-button">Stay here</a><button class="danger-button">Forget workspace</button></div></form></section>',0
     purge_open db '<h2 id="action-heading">Permanently remove this trash?</h2><p>Undo will be cleared. Server backups may retain a copy.</p><p class="confirm-task">',0
     purge_form db '</p><form action="/purge" method="post"><input type="hidden" name="id" value="',0
@@ -351,7 +379,7 @@ emit_action:
 .edit:
     mov rbx,[view_target]
     mov rsi,edit_open
-    call copy_string
+    call render_template
     mov rax,[view_id]
     call emit_number
     mov rsi,edit_title
@@ -373,7 +401,7 @@ emit_action:
     lea rsi,[rbx+17]
     call html_escape
     mov rsi,delete_form
-    call copy_string
+    call render_template
     mov rax,[view_id]
     call emit_number
     mov rsi,delete_close
@@ -402,7 +430,7 @@ emit_action:
     mov rax,[view_done]
     call emit_number
     mov rsi,clear_close
-    call copy_string
+    call render_template
 .done:
     pop rbx
     ret
@@ -424,3 +452,31 @@ emit_project_url:
 emit_tag_url:
     mov rsi,view_tag
     jmp emit_url_text
+
+emit_month:
+    mov rsi,view_month
+    jmp copy_string
+emit_day:
+    cmp qword [view_day],0
+    je .done
+    push rdi
+    mov rdi,[view_day]
+    mov rsi,date_buf
+    call format_utc
+    pop rdi
+    mov byte [date_buf+10],0
+    mov rsi,date_buf
+    jmp copy_string
+.done:
+    ret
+
+emit_day_banner:
+    cmp qword [view_day],0
+    je .done
+    mov rsi,day_banner_open
+    call copy_string
+    call emit_day
+    mov rsi,day_banner_close
+    jmp copy_string
+.done:
+    ret

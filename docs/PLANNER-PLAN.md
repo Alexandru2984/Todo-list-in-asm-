@@ -29,7 +29,7 @@ commit without assistant/coauthor credits.
   merge/replace confirmation, reference remapping, atomic apply and undo.
 - [x] Search: structured AND operators for priority/status/due/project/tag and
   free text; strict operator/date validation; reuse the native Unicode matcher.
-- [ ] Calendar/board/insights: native month navigation/day counts, native workflow
+- [x] Calendar/board/insights: native month navigation/day counts, native workflow
   movement, a private SVG chart with UTC daily completion buckets and streaks.
 - [ ] Release: local protocol/storage/migration/backup tests, browser/mobile/
   no-JavaScript/axe tests, remote GitHub Actions green, sandboxed production
@@ -124,3 +124,9 @@ or compliance guarantee is inferred from this repository.
   AND predicates, phrases, Unicode, trash, bounded parsing and read-only failure
   behavior are verified. Search permits 255 UTF-8 bytes and paths up to 2047
   bytes within the unchanged 4095-byte ordinary request envelope.
+
+- Calendar/board/insights stage: 117 native/protocol tests passed. All previous
+  browser cases passed, and the corrected calendar workflow plus four new
+  layout-specific light/dark axe cases passed on desktop/mobile. Native month
+  grids, day counts, workflow/undo redirects, chart privacy and UTC buckets have
+  independent parsers/oracles. Large imports and final production release remain.

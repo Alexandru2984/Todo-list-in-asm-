@@ -3,6 +3,7 @@
 <div class="list-footer"><p id="stats" aria-live="polite">{{active}} left · {{done}} completed · {{visible}} shown</p><span class="keyboard-note" hidden data-browser-only><kbd>N</kbd> new task <span>·</span> <kbd>/</kbd> search</span></div>
 </section>
 <section class="progress-section" aria-label="Task progress"><div class="progress-copy"><span class="progress-spark" aria-hidden="true">✦</span><div><strong id="progress-heading">A little progress goes a long way.</strong><p id="progress-description">Your next small win is waiting.</p></div></div><div class="progress-measure"><div class="progress-label"><span>Your progress</span><strong id="progress-percent">{{percent}}%</strong></div><progress id="task-progress" value="{{percent}}" max="100" aria-label="Completed tasks">{{percent}}%</progress></div></section>
+{{insights_panel}}
 {{history_panel}}
 <footer class="workspace-footer"><span>Made with Assembly. Built for a little clarity.</span><a href="/#privacy">Your space, your data ↗</a></footer>
 <noscript><p class="notice">Your workspace, editing, search, sorting and exports work without JavaScript. Assembly handles the task logic on the server.</p></noscript>

@@ -22,6 +22,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
 - Native structured AND search for priority/status/dates/projects/tags, quoted
   phrases and exact metadata matching.
+- Native month calendar, workflow board and private SVG completion activity,
+  including weekly/monthly totals and UTC streaks.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.

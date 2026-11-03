@@ -331,3 +331,62 @@ test('native undo, redo, trash restore and permanent removal work without JavaSc
     await expect(native.getByRole('button', { name: 'Redo last change', exact: true })).toBeDisabled();
   } finally { await context.close(); }
 });
+
+
+test('native board workflow, calendar days and insights work without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await native.getByRole('link', { name: 'Board', exact: true }).click();
+    await native.locator('.task-properties > summary').click();
+    await native.getByLabel('Due date (UTC)', { exact: true }).fill('2031-01-07');
+    await add(native, 'Board and calendar milestone');
+    await expect(native).toHaveURL(`${base}/app?layout=board`);
+    const todo = native.locator('.board-column').filter({ has: native.getByRole('heading', { name: 'To do', exact: true }) });
+    await expect(todo.locator('.task-title')).toHaveText('Board and calendar milestone');
+    await todo.locator('.task-menu > summary').click();
+    await todo.getByRole('button', { name: 'Start work', exact: true }).click();
+    const doing = native.locator('.board-column').filter({ has: native.getByRole('heading', { name: 'In progress', exact: true }) });
+    await expect(doing.locator('.task-title')).toHaveText('Board and calendar milestone');
+    await doing.getByRole('button', { name: 'Complete task', exact: true }).click();
+    await expect(native).toHaveURL(`${base}/app?layout=board`);
+    const done = native.locator('.board-column').filter({ has: native.getByRole('heading', { name: 'Done', exact: true }) });
+    await expect(done.locator('.task-title')).toHaveText('Board and calendar milestone');
+    await expect(native.locator('[data-insight=week]')).toHaveText('1');
+    await native.screenshot({ path: info.outputPath('board.png'), fullPage: true });
+    await native.getByRole('link', { name: 'Calendar', exact: true }).click();
+    await native.getByLabel('Calendar month', { exact: true }).fill('2031-01');
+    await native.getByRole('button', { name: 'Open month', exact: true }).click();
+    await expect(native.locator('.calendar-day[data-day="2031-01-07"]')).toHaveAttribute('data-due-count', '1');
+    for (const width of [320, 390, 768, 1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+    await native.setViewportSize(page.viewportSize());
+    await native.screenshot({ path: info.outputPath('calendar.png'), fullPage: true });
+    await native.locator('.calendar-day[data-day="2031-01-07"]').click();
+    await expect(native.locator('#task-list > li')).toHaveCount(1);
+    await expect(native.getByText('Due on 2031-01-07 UTC.', { exact: false })).toBeVisible();
+    await expect(native.locator('.task-title')).toHaveText('Board and calendar milestone');
+  } finally { await context.close(); }
+});
+
+
+for (const layout of ['board', 'calendar']) {
+  test(`native ${layout} meets automated WCAG checks in light and dark themes`, async ({ page }, info) => {
+    await open(page);
+    await page.locator('.task-properties > summary').click();
+    await page.getByLabel('Due date (UTC)', { exact: true }).fill('2031-01-07');
+    await page.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('urgent');
+    await add(page, 'Accessible planning milestone');
+    await page.goto(`${base}/app?layout=${layout}&month=2031-01`);
+    let result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(result.violations).toEqual([]);
+    await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+    result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(result.violations).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`${layout}-dark.png`), fullPage: true });
+  });
+}
