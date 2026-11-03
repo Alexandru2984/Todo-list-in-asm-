@@ -22,6 +22,9 @@
   deadline, 40 concurrent writes, 1000-slot capacity, maximum escaped render,
   restart persistence, failed writes, corrupt files and symlink refusal.
 - Three backup round-trip/integrity/path-safety checks.
+- Proxy-normalized lowercase response headers covered by a deployment-probe
+  regression check. A real rollout automatically reverted on the original
+  validator failure; the existing service remained available.
 - 14 Chromium browser checks across desktop and Pixel 5 emulation. Layout overflow
   checked at 320, 390, 768 and 1440 px. Automated WCAG A/AA checks passed for public
   page and workspace in light/dark themes. No claim of manual WCAG certification.

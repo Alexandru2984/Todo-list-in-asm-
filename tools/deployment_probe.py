@@ -21,7 +21,7 @@ def probe(base, cleanup_data=None):
         try:
             connection.request(method, path, body=urlencode(data) if data is not None else None, headers=headers)
             response = connection.getresponse()
-            return response.status, dict(response.getheaders()), response.read()
+            return response.status, response.headers, response.read()
         finally:
             connection.close()
 
