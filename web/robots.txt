@@ -1,4 +1,11 @@
 User-agent: *
+Allow: /app.css
+Allow: /app.js
 Disallow: /app
 Disallow: /export
+Disallow: /recovery
+Disallow: /stats.svg
+Disallow: /import
+Disallow: /board/
+Disallow: /healthz
 Sitemap: https://asm.micutu.com/sitemap.xml
