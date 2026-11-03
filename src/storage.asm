@@ -920,6 +920,14 @@ duplicate_todo:
     mov [property_task+T_PRIORITY],rdx
     mov rdx,[rax+T_DUE]
     mov [property_task+T_DUE],rdx
-    mov qword [property_flags],3
+    lea rdi,[property_task+T_PROJECT]
+    lea rsi,[rax+T_PROJECT]
+    mov ecx,PROJECT_MAX+1
+    rep movsb
+    lea rdi,[property_task+T_TAGS]
+    lea rsi,[rax+T_TAGS]
+    mov ecx,TAGS_MAX+1
+    rep movsb
+    mov qword [property_flags],27
     lea rdi,[rax+17]
     jmp append_todo

@@ -3,6 +3,7 @@ DEFAULT ABS
 extern copy_string, html_escape, emit_number, strcmp, format_utc
 extern view_total, view_done, view_active, view_percent, view_count
 extern render_properties, property_task
+extern view_project, view_tag
 extern view_filter, view_sort, view_query, view_action, view_id, view_target
 
 global render_template
@@ -39,6 +40,10 @@ section .data
     name_sort_priority db 'sort_priority',0
     name_sort_due db 'sort_due',0
     name_add_properties db 'add_properties',0
+    name_project db 'project',0
+    name_tag db 'tag',0
+    name_project_url db 'project_url',0
+    name_tag_url db 'tag_url',0
     markers:
         dq name_total,emit_counter,view_total,0
         dq name_done,emit_counter,view_done,0
@@ -72,6 +77,10 @@ section .data
         dq name_sort_priority,emit_selected,view_sort,4
         dq name_sort_due,emit_selected,view_sort,5
         dq name_add_properties,emit_add_properties,0,0
+        dq name_project,emit_project,0,0
+        dq name_tag,emit_tag,0,0
+        dq name_project_url,emit_project_url,0,0
+        dq name_tag_url,emit_tag_url,0,0
         dq 0,0,0,0
     lit_page db 'page',0
     lit_false db 'false',0
@@ -187,6 +196,8 @@ emit_query:
     jmp html_escape
 emit_url:
     mov rsi,view_query
+    jmp emit_url_text
+emit_url_text:
 .loop:
     lodsb
     test al,al
@@ -362,3 +373,16 @@ emit_add_properties:
     mov rsi,property_task
     mov edx,1
     jmp render_properties
+
+emit_project:
+    mov rsi,view_project
+    jmp html_escape
+emit_tag:
+    mov rsi,view_tag
+    jmp html_escape
+emit_project_url:
+    mov rsi,view_project
+    jmp emit_url_text
+emit_tag_url:
+    mov rsi,view_tag
+    jmp emit_url_text

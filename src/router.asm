@@ -168,7 +168,7 @@ section .data
     path_16 db '/clear-done',0
 section .bss
     current_uid resb 64
-    res_buf resb 2097152
+    res_buf resb RESPONSE_MAX
     hdr_buf resb 2048
     extra_buf resb 512
     number_buf resb 24

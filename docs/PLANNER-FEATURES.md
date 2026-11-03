@@ -29,7 +29,7 @@ array. Each task retains the V1 ID/title/completed/createdAt fields and adds
 priority, dueDate, completedAt, project, tags, parentId, dependencies, recurrence,
 recurrenceAnchor, stage, deletedAt and previousCompleted. IDs remain strings to
 avoid JavaScript's 53-bit integer limit. Unknown optional dates are JSON null;
-projects and tags are bounded strings. Tags will be editable in the next stage.
+projects and tags are bounded strings. Tags are editable in native task details.
 
 CSV keeps the original first four columns and adds the metadata columns plus
 `escapeFlags`. It includes retained trash, distinguished by deletedAt. Dependency
@@ -56,3 +56,19 @@ project, tags and prerequisites but begin outside the original parent and workfl
 stage. A full workspace, exhausted IDs, an unrepresentable next date or a failed
 write leaves the original completion unchanged. Existing completed legacy tasks
 stay idempotent and do not receive invented timestamps or new occurrences.
+
+## Projects and tags
+
+Task details and Edit include a project (up to 32 UTF-8 bytes) and tags. Tags use
+commas, trim surrounding ASCII spaces and retain their spelling. There are at
+most eight tags, 24 bytes each and 64 input bytes total. Empty tags, trailing
+commas and case-insensitive duplicates are rejected. Clear the field to remove
+all tags. Title-only edits preserve these fields; duplication and recurrence
+carry them into the new task.
+
+Open **Filter by project & tag** to match one exact project and/or one exact tag.
+Matching folds ASCII, Latin-1 and Romanian case like native title search. A tag
+filter for `asm` does not match `assembly`. Filters combine with date/status,
+free-text search and sort, and remain present in native navigation links. Global
+workspace counters continue to include all live tasks. Names are escaped in
+HTML and encoded in URLs; exports retain the original UTF-8 text.

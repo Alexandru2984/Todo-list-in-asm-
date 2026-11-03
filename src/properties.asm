@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern strcmp, parse_date, copy_string, format_utc, html_escape
 extern recurrence_names, recurrence_anchor
+extern normalize_tags, strlen
 
 global reset_properties, parse_property, apply_properties, render_properties
  global property_flags, property_task, priority_names, render_task_badges
@@ -9,6 +10,8 @@ section .data
     priority_key db 'priority',0
     due_key db 'due',0
     repeat_key db 'repeat',0
+    project_key db 'project',0
+    tags_key db 'tags',0
     normal db 'normal',0
     low db 'low',0
     high db 'high',0
@@ -21,7 +24,11 @@ section .data
     option_end db '</option>',0
     due_open db '</select></label><label>Due date (UTC)<input type="date" name="due" min="1970-01-02" max="9999-12-31" value="',0
     form_close db '></label><label>Repeat<select name="repeat"',0
-    repeat_close db '</select></label></div><p class="input-hint">Repeating tasks require a due date. Completing one creates the next occurrence after today.</p>',0
+    repeat_close db '</select></label>',0
+    project_open db '<label>Project<input name="project" maxlength="32" value="',0
+    tags_open db '<label>Tags (comma separated)<input name="tags" maxlength="64" value="',0
+    input_close db '></label>',0
+    properties_close db '</div><p class="input-hint">Repeat requires a due date. Up to 8 unique tags, 24 UTF-8 bytes each; 64 bytes total.</p>',0
     badges_open db '<div class="task-badges">',0
     priority_open db '<span class="priority-badge" data-priority="',0
     priority_close db ' priority</span>',0
@@ -30,6 +37,8 @@ section .data
     div_close db '</div>',0
     badge_repeat db '<span class="repeat-badge">Repeats ',0
     span_close db '</span>',0
+    badge_project db '<span class="project-badge">Project: ',0
+    badge_tags db '<span class="tags-badge">Tags: ',0
 section .bss
     property_flags resq 1 ; 1 priority, 2 due, 4 repeat
     property_task resb TASK_SIZE
@@ -64,6 +73,16 @@ parse_property:
     call strcmp
     test rax,rax
     jz .repeat
+    mov rdi,rbx
+    mov rsi,project_key
+    call strcmp
+    test rax,rax
+    jz .project
+    mov rdi,rbx
+    mov rsi,tags_key
+    call strcmp
+    test rax,rax
+    jz .tags
     xor eax,eax
     jmp .done
 .priority:
@@ -115,12 +134,74 @@ parse_property:
     jmp .bad
 .repeat_value:
     mov [property_task+T_REPEAT],rbx
+    jmp .ok
+.project:
+    test qword [property_flags],8
+    jnz .bad
+    or qword [property_flags],8
+    mov rdi,r12
+    mov rsi,property_task+T_PROJECT
+    mov edx,PROJECT_MAX
+    call trim_property_text
+    test rax,rax
+    js .bad
+    jmp .ok
+.tags:
+    test qword [property_flags],16
+    jnz .bad
+    or qword [property_flags],16
+    mov rdi,r12
+    mov rsi,property_task+T_TAGS
+    call normalize_tags
+    test rax,rax
+    js .bad
 .ok:
     mov eax,1
     jmp .done
 .bad:
     mov rax,-400
 .done:
+    pop r12
+    pop rbx
+    ret
+
+; Validated decoded source, ASCII whitespace trimmed, bounded UTF-8 bytes.
+trim_property_text:
+    push rbx
+    push r12
+    push r13
+    mov rbx,rdi
+    mov r12,rsi
+    mov r13,rdx
+.leading:
+    cmp byte [rbx],' '
+    jne .length
+    inc rbx
+    jmp .leading
+.length:
+    mov rdi,rbx
+    call strlen
+.trailing:
+    test rax,rax
+    jz .copy
+    cmp byte [rbx+rax-1],' '
+    jne .copy
+    dec rax
+    jmp .trailing
+.copy:
+    cmp rax,r13
+    ja .bad
+    mov rcx,rax
+    mov rsi,rbx
+    mov rdi,r12
+    rep movsb
+    mov byte [rdi],0
+    xor eax,eax
+    jmp .done
+.bad:
+    mov rax,-400
+.done:
+    pop r13
     pop r12
     pop rbx
     ret
@@ -168,6 +249,20 @@ apply_properties:
 .no_repeat:
     mov qword [rdi+T_ANCHOR],0
 .ok:
+    test qword [property_flags],8
+    jz .tags
+    lea rdi,[rbx+T_PROJECT]
+    mov rsi,property_task+T_PROJECT
+    mov ecx,PROJECT_MAX+1
+    rep movsb
+.tags:
+    test qword [property_flags],16
+    jz .success
+    lea rdi,[rbx+T_TAGS]
+    mov rsi,property_task+T_TAGS
+    mov ecx,TAGS_MAX+1
+    rep movsb
+.success:
     xor eax,eax
     jmp .done
 .bad:
@@ -257,6 +352,26 @@ render_properties:
     jb .repeat_option
     mov rsi,repeat_close
     call copy_string
+    mov rsi,project_open
+    call copy_string
+    lea rsi,[rbx+T_PROJECT]
+    call html_escape
+    mov byte [rdi],'"'
+    inc rdi
+    call .external
+    mov rsi,input_close
+    call copy_string
+    mov rsi,tags_open
+    call copy_string
+    lea rsi,[rbx+T_TAGS]
+    call html_escape
+    mov byte [rdi],'"'
+    inc rdi
+    call .external
+    mov rsi,input_close
+    call copy_string
+    mov rsi,properties_close
+    call copy_string
     pop r13
     pop r12
     pop rbx
@@ -315,6 +430,24 @@ render_task_badges:
     mov rsi,span_close
     call copy_string
 .end:
+    cmp byte [rbx+T_PROJECT],0
+    je .tags
+    mov rsi,badge_project
+    call copy_string
+    lea rsi,[rbx+T_PROJECT]
+    call html_escape
+    mov rsi,span_close
+    call copy_string
+.tags:
+    cmp byte [rbx+T_TAGS],0
+    je .badges_end
+    mov rsi,badge_tags
+    call copy_string
+    lea rsi,[rbx+T_TAGS]
+    call html_escape
+    mov rsi,span_close
+    call copy_string
+.badges_end:
     mov rsi,div_close
     call copy_string
     pop rbx

@@ -3,14 +3,18 @@ DEFAULT ABS
 extern strcmp, strlen, parse_uint, decode_value, decode_buf, decode_stripped
 extern get_todo_list, find_todo
 extern today_epoch
+extern tag_contains
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
  global view_id, view_target, unicode_compare
+global view_project, view_tag
 section .data
     key_filter db 'f',0
     key_sort db 'sort',0
     key_query db 'q',0
+    key_project db 'project',0
+    key_tag db 'tag',0
     key_edit db 'edit',0
     key_delete db 'delete',0
     key_confirm db 'confirm',0
@@ -34,6 +38,8 @@ section .bss
     view_filter resq 1
     view_sort resq 1
     view_query resb TITLE_MAX+1
+    view_project resb PROJECT_MAX+1
+    view_tag resb 25
     view_action resq 1 ; 0 list, 1 edit, 2 confirm delete, 3 clear, 4 forget
     view_id resq 1
     view_target resq 1
@@ -59,6 +65,8 @@ parse_view:
     mov qword [view_target],0
     mov qword [view_flags],0
     mov byte [view_query],0
+    mov byte [view_project],0
+    mov byte [view_tag],0
     mov rbx,rdi
     test rbx,rbx
     jz .ok
@@ -113,6 +121,16 @@ parse_view:
     call strcmp
     test rax,rax
     jz .query
+    mov rdi,rbx
+    mov rsi,key_project
+    call strcmp
+    test rax,rax
+    jz .project
+    mov rdi,rbx
+    mov rsi,key_tag
+    call strcmp
+    test rax,rax
+    jz .tag
     mov rdi,rbx
     mov rsi,key_edit
     call strcmp
@@ -261,6 +279,37 @@ parse_view:
     mov rsi,decode_buf
     mov rdi,view_query
     rep movsb
+    jmp .next
+.project:
+    test qword [view_flags],16
+    jnz .bad
+    or qword [view_flags],16
+    mov rdi,decode_buf
+    call strlen
+    cmp rax,PROJECT_MAX
+    ja .bad
+    lea rcx,[rax+1]
+    mov rsi,decode_buf
+    mov rdi,view_project
+    rep movsb
+    jmp .next
+.tag:
+    test qword [view_flags],32
+    jnz .bad
+    or qword [view_flags],32
+    mov rdi,decode_buf
+    call strlen
+    cmp rax,24
+    ja .bad
+    lea rcx,[rax+1]
+    mov rsi,decode_buf
+    mov rdi,view_tag
+.copy_tag:
+    lodsb
+    cmp al,','
+    je .bad
+    stosb
+    loop .copy_tag
 .next:
     mov rbx,r13
     jmp .field
@@ -533,6 +582,22 @@ build_view:
     cmp rax,rdx
     ja .next
 .query:
+    cmp byte [view_project],0
+    je .tag
+    lea rdi,[rbx+T_PROJECT]
+    mov rsi,view_project
+    call unicode_compare
+    test rax,rax
+    jnz .next
+.tag:
+    cmp byte [view_tag],0
+    je .title_query
+    lea rdi,[rbx+T_TAGS]
+    mov rsi,view_tag
+    call tag_contains
+    test rax,rax
+    jz .next
+.title_query:
     lea rdi,[rbx+17]
     mov rsi,view_query
     call contains

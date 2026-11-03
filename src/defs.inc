@@ -84,6 +84,7 @@
 %define SLOT_MAX      1200
 %define TASK_SIZE     512
 %define STORAGE_MAX   2097152
+%define RESPONSE_MAX  4194304
 %define T_PRIORITY    128
 %define T_DUE         136
 %define T_COMPLETED   144

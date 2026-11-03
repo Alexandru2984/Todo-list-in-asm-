@@ -34,10 +34,13 @@ removed and references are detached. Trash restoration UI is a later stage.
 Every opened data/temporary inode must be regular and have at most one link.
 Checks precede reads or truncation; O_NOFOLLOW and O_NONBLOCK prevent symlink and
 FIFO attacks. Temporary writes, fsync, rename and directory fsync remain checked.
-The service allowlist adds only fstat and ftruncate for these checks. The service
-memory ceiling grows to 160 MiB (96 MiB high watermark): 24 simultaneous workers
-may each touch a 2 MiB source buffer, a 0.6 MiB task array and a 2 MiB render
-buffer, plus process overhead. The ordinary HTTP request cap remains 4 KiB.
+The service allowlist adds only fstat and ftruncate for these checks. The response
+buffer grows to 4 MiB as planner metadata becomes visible. The service memory
+ceiling is 256 MiB (160 MiB high watermark): 24 simultaneous workers may each
+touch a 2 MiB source buffer, a 0.6 MiB task array and a 4 MiB response buffer, plus
+process overhead. The ordinary HTTP request cap remains 4 KiB. Worst-case escaped
+metadata rendering has a dedicated capacity test; the cap is not a request limit.
+
 
 ## Offline downgrade
 

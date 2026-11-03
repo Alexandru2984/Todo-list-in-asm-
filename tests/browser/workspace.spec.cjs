@@ -228,9 +228,18 @@ test('planner priority, due dates and recurrence work without JavaScript on mobi
     await native.locator('.task-properties > summary').click();
     await native.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('urgent');
     await native.getByLabel('Due date (UTC)', { exact: true }).fill('2027-02-28');
+    await native.getByRole('textbox', { name: 'Project', exact: true }).fill('Ședință');
+    await native.getByRole('textbox', { name: 'Tags (comma separated)', exact: true }).fill('asm, mobile');
     await native.getByRole('textbox', { name: 'New task', exact: true }).fill('Native planner milestone');
     await native.getByRole('button', { name: 'Add task', exact: true }).click();
     await expect(native.locator('.priority-badge')).toHaveText('urgent priority');
+    await expect(native.locator('.project-badge')).toHaveText('Project: Ședință');
+    await expect(native.locator('.tags-badge')).toHaveText('Tags: asm,mobile');
+    await native.locator('.filter-properties > summary').click();
+    await native.getByRole('textbox', { name: 'Project filter', exact: true }).fill('șEDINȚĂ');
+    await native.getByRole('textbox', { name: 'Tag filter', exact: true }).fill('MOBILE');
+    await native.getByRole('button', { name: 'Apply project filters' }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(1);
     await expect(native.locator('.due-badge')).toHaveText('Due 2027-02-28');
     await menuAction(native, 'Native planner milestone', 'Edit');
     const edit = native.locator('#action-form');

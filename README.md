@@ -15,6 +15,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
   computed on the server in ASM. The complete task workflow works without JavaScript.
 - Native daily/weekday/weekly/monthly/yearly recurrence creates the next task
   atomically on completion and retains month/leap-day anchors.
+- Native projects and tags with exact Unicode-aware filters, editable properties
+  and spreadsheet-safe metadata exports.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.

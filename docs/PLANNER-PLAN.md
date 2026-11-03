@@ -17,7 +17,7 @@ commit without assistant/coauthor credits.
 - [x] Recurrence: daily/weekdays/weekly/monthly/yearly, calendar arithmetic,
   clipped month/year dates with a retained anchor, no duplicate next occurrence
   on repeated completion; capacity failures must leave the original unchanged.
-- [ ] Projects/tags: bounded UTF-8 values, editable on native forms, exact folded
+- [x] Projects/tags: bounded UTF-8 values, editable on native forms, exact folded
   filtering and preserved JSON/CSV exports. No separate runtime/database.
 - [ ] Subtasks/dependencies: parent links plus up to eight prerequisite IDs,
   combined cycle detection, blocked-task view, completion checks, useful native
@@ -103,3 +103,7 @@ or compliance guarantee is inferred from this repository.
 - Recurrence stage: 84 native/protocol tests passed; native planner and expanded
   axe browser cases passed on desktop/mobile. Independent recurrence oracles
   covered 180 mixed schedules, clipped month/leap anchors and atomic failures.
+
+- Projects/tag stage: 89 native/protocol tests passed, plus desktop/mobile native
+  planner and axe cases. Folded exact filtering, canonical tag bounds, preserved
+  links and worst-case escaped rendering have independent assertions.
