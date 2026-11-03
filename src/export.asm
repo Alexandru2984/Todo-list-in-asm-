@@ -2,10 +2,12 @@
 DEFAULT ABS
 extern get_todo_list, itoa, format_utc, copy_string
 
-global export_json, export_csv
+extern export_json_metadata, export_csv_metadata
+global export_json, export_csv, json_string, json_date, csv_title, csv_formula
 section .data
-    json_open db '{"version":1,"exportedAt":',0
+    json_open db '{"version":2,"exportedAt":',0
     json_tasks db ',"tasks":[',0
+    json_trash db '],"trash":[',0
     json_id db '{"id":"',0
     json_title db '","title":',0
     json_done db ',"completed":',0
@@ -13,7 +15,7 @@ section .data
     lit_true db 'true',0
     lit_false db 'false',0
     lit_null db 'null',0
-    csv_header db 0xef,0xbb,0xbf,'"id","title","completed","createdAt"',13,10,0
+    csv_header db 0xef,0xbb,0xbf,'"id","title","completed","createdAt","priority","dueDate","completedAt","project","tags","parentId","dependencies","recurrence","recurrenceAnchor","stage","deletedAt","previousCompleted","escapeFlags"',13,10,0
 section .bss
     stamp resb 24
     decimal resb 24
@@ -65,6 +67,8 @@ export_json:
     push r12
     push r13
     push r14
+    push r15
+    xor r15d,r15d
     mov r12,rdi
     mov rsi,json_open
     call copy_string
@@ -86,7 +90,10 @@ export_json:
     cmp qword [rbx],0
     je .next
     cmp byte [rbx+8],2
-    je .next
+    sete al
+    movzx eax,al
+    cmp rax,r15
+    jne .next
     test r14,r14
     jz .record
     mov byte [rdi],','
@@ -118,16 +125,32 @@ export_json:
     call copy_string
     mov rax,[rbx+9]
     call json_date
+    mov rsi,rbx
+    call export_json_metadata
     mov byte [rdi],'}'
     inc rdi
 .next:
     add rbx,TASK_SIZE
     dec r13
     jnz .loop
+    test r15,r15
+    jnz .finish
+    inc r15
+    mov rsi,json_trash
+    call copy_string
+    push rdi
+    call get_todo_list
+    mov rbx,rax
+    pop rdi
+    mov r13d,SLOT_MAX
+    xor r14d,r14d
+    jmp .loop
+.finish:
     mov word [rdi],']}'
     mov byte [rdi+2],10
     lea rax,[rdi+3]
     sub rax,r12
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -257,8 +280,7 @@ export_csv:
 .loop:
     cmp qword [rbx],0
     je .next
-    cmp byte [rbx+8],2
-    je .next
+
     mov byte [rdi],'"'
     inc rdi
     push rdi
@@ -293,8 +315,11 @@ export_csv:
     call copy_string
 .end_record:
     mov byte [rdi],'"'
-    mov word [rdi+1],0x0a0d
-    add rdi,3
+    inc rdi
+    mov rsi,rbx
+    call export_csv_metadata
+    mov word [rdi],0x0a0d
+    add rdi,2
 .next:
     add rbx,TASK_SIZE
     dec r13

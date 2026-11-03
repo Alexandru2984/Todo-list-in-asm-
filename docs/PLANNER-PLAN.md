@@ -12,7 +12,7 @@ commit without assistant/coauthor credits.
   concrete tested fix and observe a successful remote run. Keep axe checks active.
 - [x] V2 storage: read legacy records unchanged, version new snapshots, preserve
   native backup compatibility, add a native downgrade command and test rollback.
-- [ ] Priorities/dates: low/normal/high/urgent, strict ISO dates, Today/Upcoming/
+- [x] Priorities/dates: low/normal/high/urgent, strict ISO dates, Today/Upcoming/
   Overdue views, priority/due sorts, completion timestamps and native forms.
 - [ ] Recurrence: daily/weekdays/weekly/monthly/yearly, calendar arithmetic,
   clipped month/year dates with a retained anchor, no duplicate next occurrence
@@ -94,3 +94,8 @@ or compliance guarantee is inferred from this repository.
   passed including the 2 MiB boundary; all 16 desktop/mobile/no-JavaScript/axe
   browser cases passed. Offline downgrade and corruption preflight use isolated
   workspaces. Production rollout remains the final delivery stage.
+
+- Priority/date stage: 78 native/protocol tests passed. Existing 16 browser cases
+  passed; the corrected planner and expanded axe cases passed on desktop/mobile.
+  155 independent Gregorian dates matched native parsing, including leap-century
+  boundaries. JSON V2/extended CSV preserve metadata and bounded trash.

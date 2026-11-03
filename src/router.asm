@@ -11,6 +11,8 @@ global decode_value, decode_buf, decode_stripped
 extern parse_view, build_view, render_template, view_rows, view_count, format_utc
 extern duplicate_todo
 extern export_json, export_csv
+extern reset_properties, parse_property, property_flags, property_task
+extern render_properties, render_task_badges
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
     see_other db 'HTTP/1.1 303 See Other',13,10,0
@@ -89,7 +91,8 @@ section .data
     li_ts db '" data-ts="',0
     li_active db '" data-done="0"><div class="task-copy"><span class="task-title">',0
     li_done db '" data-done="1" class="done"><div class="task-copy"><span class="task-title">',0
-    li_actions db '</time></div><div class="task-actions">',0
+    li_actions db '</div><div class="task-actions">',0
+    close_time db '</time>',0
     li_date db '</span><time class="task-date">',0
     menu_open db '<details class="task-menu"><summary aria-label="More task actions">&#8943;</summary><div class="task-menu-items"><a data-edit href="/app?edit=',0
     menu_edit_end db '#action-form">Edit</a><form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
@@ -583,6 +586,7 @@ parse_form:
     push rbx
     push r12
     push r13
+    call reset_properties
     mov qword [form_flags],0
     mov byte [form_title],0
     mov byte [form_token],0
@@ -636,7 +640,7 @@ parse_form:
     mov rsi,key_token
     call strcmp
     test rax,rax
-    jnz .bad
+    jnz .property
     cmp qword [decode_stripped],0
     jne .bad
     test qword [form_flags],4
@@ -650,6 +654,16 @@ parse_form:
     mov rdi,form_token
     mov ecx,33
     rep movsb
+    jmp .next
+.property:
+    cmp qword [decode_stripped],0
+    jne .bad
+    mov rdi,rbx
+    mov rsi,decode_buf
+    call parse_property
+    test rax,rax
+    js .done
+    jz .bad
     jmp .next
 .id:
     cmp qword [decode_stripped],0
@@ -914,6 +928,19 @@ handle_request:
     call parse_form
     test rax,rax
     js .error
+    cmp qword [property_flags],0
+    je .form_ready
+    mov rdi,request_path
+    mov rsi,path_11
+    call strcmp
+    test rax,rax
+    jz .form_ready
+    mov rdi,request_path
+    mov rsi,path_15
+    call strcmp
+    test rax,rax
+    jnz .bad
+.form_ready:
     mov rdi,request_path
     mov rsi,path_8
     call strcmp
@@ -1315,7 +1342,12 @@ handle_request:
     call copy_string
     mov rsi,form_title
     call html_escape
-    mov rsi,draft_close
+    mov word [rdi],'">'
+    add rdi,2
+    mov rsi,property_task
+    xor edx,edx
+    call render_properties
+    mov rsi,draft_close+2
     call copy_string
     mov rdx,rdi
     sub rdx,res_buf
@@ -1431,6 +1463,10 @@ render_app:
     mov rsi,row_date
     call copy_string
 .date_done:
+    mov rsi,close_time
+    call copy_string
+    mov rsi,rbx
+    call render_task_badges
     mov rsi,li_actions
     call copy_string
     mov rsi,complete_open

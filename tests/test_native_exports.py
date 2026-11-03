@@ -45,8 +45,8 @@ class NativeExportTests(unittest.TestCase):
         self.fixture([(9223372036854775806, 1, 1700000000, title)])
         body = self.get('/export.json')[2]
         document = json.loads(body)
-        self.assertEqual(document['version'], 1)
-        self.assertEqual(document['tasks'], [{
+        self.assertEqual(document['version'], 2)
+        self.assertEqual([{key: task[key] for key in ['id','title','completed','createdAt']} for task in document['tasks']], [{
             'id': '9223372036854775806', 'title': title, 'completed': True,
             'createdAt': '2023-11-14T22:13:20Z'}])
         self.assertNotIn(self.cookie.split('=')[1].encode(), body)

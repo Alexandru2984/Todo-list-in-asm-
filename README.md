@@ -10,7 +10,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 ## What works
 
 - Add, edit, duplicate, complete, reopen, delete and clear completed tasks.
-- Search, All/Active/Done filters, four sort orders and progress indicators,
+- Priorities, UTC due dates, Today / Next 7 days / Overdue views, six sort
+  orders, search, All/Active/Done filters and progress indicators,
   computed on the server in ASM. The complete task workflow works without JavaScript.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
@@ -105,16 +106,20 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `deploy/` | Reviewed systemd/nginx configurations and deployment procedure |
 | `tools/backup.py` | Legacy .tar.gz compatibility/rollback tool; no scheduled use |
 
-Snapshots retain the existing `id|status|timestamp|title` record format. A new
-`#next=N` header preserves IDs across deletions. Status is 0 active, 1 complete;
-legacy tombstone records (status 2) are replayed and removed on the next save.
+Versioned snapshots preserve legacy V1 reads and write explicit V2 metadata
+on mutation. Monotonic IDs survive deletion. Native trash retains the latest
+200 items; restoration UI is scheduled in the planner delivery plan. The native
+offline downgrade command supports rollback to older binaries. See the
+[storage contract](docs/STORAGE-V2.md).
 
 Limits: 1,000 tasks per workspace, 110 **UTF-8 bytes** per title, 4,095 request
 bytes, one HTTP request per connection. There is no runtime TLS, account recovery,
 server-side session revocation, offline queue or collaboration layer.
 
-The roadmap covers priorities/due dates, projects, import, offline support,
-passkeys, sharing and scale. These are proposals, not released features.
+The [native planner delivery plan](docs/PLANNER-PLAN.md) tracks recurrence,
+projects, dependencies, undo/trash, import, structured search, calendar and insights.
+The broader roadmap also proposes passkeys, sharing and scale. Unchecked stages
+are not released features.
 
 ## License
 

@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern copy_string, html_escape, emit_number, strcmp, format_utc
 extern view_total, view_done, view_active, view_percent, view_count
+extern render_properties, property_task
 extern view_filter, view_sort, view_query, view_action, view_id, view_target
 
 global render_template
@@ -32,6 +33,12 @@ section .data
     name_action_form db 'action_form',0
     name_today db 'today',0
     name_view_name db 'view_name',0
+    name_today_current db 'today_current',0
+    name_upcoming_current db 'upcoming_current',0
+    name_overdue_current db 'overdue_current',0
+    name_sort_priority db 'sort_priority',0
+    name_sort_due db 'sort_due',0
+    name_add_properties db 'add_properties',0
     markers:
         dq name_total,emit_counter,view_total,0
         dq name_done,emit_counter,view_done,0
@@ -59,6 +66,12 @@ section .data
         dq name_action_form,emit_action,0,0
         dq name_today,emit_today,0,0
         dq name_view_name,emit_view_name,0,0
+        dq name_today_current,emit_current,view_filter,3
+        dq name_upcoming_current,emit_current,view_filter,4
+        dq name_overdue_current,emit_current,view_filter,5
+        dq name_sort_priority,emit_selected,view_sort,4
+        dq name_sort_due,emit_selected,view_sort,5
+        dq name_add_properties,emit_add_properties,0,0
         dq 0,0,0,0
     lit_page db 'page',0
     lit_false db 'false',0
@@ -68,15 +81,23 @@ section .data
     lit_all db 'all',0
     lit_active db 'active',0
     lit_done db 'done',0
-    filter_names dq lit_all,lit_active,lit_done
+    lit_today db 'today',0
+    lit_upcoming db 'upcoming',0
+    lit_overdue db 'overdue',0
+    filter_names dq lit_all,lit_active,lit_done,lit_today,lit_upcoming,lit_overdue
     view_all db 'All tasks',0
     view_active_name db 'In progress',0
     view_done_name db 'Completed',0
-    view_names dq view_all,view_active_name,view_done_name
+    view_today_name db 'Today',0
+    view_upcoming_name db 'Next 7 days',0
+    view_overdue_name db 'Overdue',0
+    view_names dq view_all,view_active_name,view_done_name,view_today_name,view_upcoming_name,view_overdue_name
     lit_newest db 'newest',0
     lit_oldest db 'oldest',0
     lit_az db 'az',0
-    sort_names dq lit_newest,lit_oldest,lit_az,lit_active
+    lit_priority db 'priority',0
+    lit_due db 'due',0
+    sort_names dq lit_newest,lit_oldest,lit_az,lit_active,lit_priority,lit_due
     hex db '0123456789ABCDEF'
     fresh_title db 'A little space for your next big thing.',0
     filtered_title db 'A little breathing room.',0
@@ -86,7 +107,7 @@ section .data
     edit_open db '<h2 id="action-heading">A fresh way to put it.</h2><form action="/edit" method="post"><input type="hidden" name="id" value="',0
     edit_title db '"><label for="edit-title">Task title</label><input id="edit-title" name="title" required maxlength="110" value="',0
     edit_close db '"><p class="input-hint">Up to 110 UTF-8 bytes.</p><div class="dialog-actions"><a href="/app" class="secondary-button">Cancel</a><button class="primary-button">Save changes</button></div></form></section>',0
-    delete_open db '<h2 id="action-heading">Let this one go?</h2><p>This task will be permanently deleted:</p><p class="confirm-task">',0
+    delete_open db '<h2 id="action-heading">Let this one go?</h2><p>Move this task and its subtasks to trash:</p><p class="confirm-task">',0
     delete_form db '</p><form action="/delete" method="post"><input type="hidden" name="id" value="',0
     delete_close db '"><div class="dialog-actions"><a href="/app" class="secondary-button">Keep it</a><button class="danger-button">Delete task</button></div></form></section>',0
     clear_form db '<h2 id="action-heading">Make room for what comes next?</h2><p>Completed tasks to delete: ',0
@@ -305,7 +326,12 @@ emit_action:
     call copy_string
     lea rsi,[rbx+17]
     call html_escape
-    mov rsi,edit_close
+    mov word [rdi],'">'
+    add rdi,2
+    mov rsi,rbx
+    xor edx,edx
+    call render_properties
+    mov rsi,edit_close+2
     call copy_string
     jmp .done
 .delete:
@@ -331,3 +357,8 @@ emit_action:
 .done:
     pop rbx
     ret
+
+emit_add_properties:
+    mov rsi,property_task
+    mov edx,1
+    jmp render_properties

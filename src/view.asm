@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern strcmp, strlen, parse_uint, decode_value, decode_buf, decode_stripped
 extern get_todo_list, find_todo
+extern today_epoch
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
@@ -16,10 +17,17 @@ section .data
     filter_all db 'all',0
     filter_active db 'active',0
     filter_done db 'done',0
+    filter_today db 'today',0
+    filter_upcoming db 'upcoming',0
+    filter_overdue db 'overdue',0
+    extra_filters dq filter_today,filter_upcoming,filter_overdue
     sort_newest db 'newest',0
     sort_oldest db 'oldest',0
     sort_az db 'az',0
     sort_active db 'active',0
+    sort_priority db 'priority',0
+    sort_due db 'due',0
+    priority_ranks dq 1,0,2,3
     confirm_clear db 'clear',0
     confirm_forget db 'forget',0
 section .bss
@@ -37,6 +45,7 @@ section .bss
     view_done resq 1
     view_active resq 1
     view_percent resq 1
+    view_today resq 1
 section .text
 ; Parse only known, unique query fields. rdi=NULL means defaults.
 parse_view:
@@ -170,8 +179,24 @@ parse_view:
     mov rsi,filter_done
     call strcmp
     test rax,rax
-    jnz .bad
+    jnz .extra_filter
     mov qword [view_filter],2
+    jmp .next
+.extra_filter:
+    xor ebx,ebx
+.extra_filter_loop:
+    mov rdi,decode_buf
+    mov rsi,[extra_filters+rbx*8]
+    call strcmp
+    test rax,rax
+    jz .extra_filter_value
+    inc ebx
+    cmp ebx,3
+    jb .extra_filter_loop
+    jmp .bad
+.extra_filter_value:
+    lea rax,[rbx+3]
+    mov [view_filter],rax
     jmp .next
 .active_filter:
     mov qword [view_filter],1
@@ -199,8 +224,24 @@ parse_view:
     mov rsi,sort_active
     call strcmp
     test rax,rax
-    jnz .bad
+    jnz .priority_sort
     mov qword [view_sort],3
+    jmp .next
+.priority_sort:
+    mov rdi,decode_buf
+    mov rsi,sort_priority
+    call strcmp
+    test rax,rax
+    jnz .due_sort
+    mov qword [view_sort],4
+    jmp .next
+.due_sort:
+    mov rdi,decode_buf
+    mov rsi,sort_due
+    call strcmp
+    test rax,rax
+    jnz .bad
+    mov qword [view_sort],5
     jmp .next
 .oldest:
     mov qword [view_sort],1
@@ -361,6 +402,10 @@ contains:
     ret
 
 compare_rows:
+    cmp qword [view_sort],4
+    je .priority
+    cmp qword [view_sort],5
+    je .due
     cmp qword [view_sort],1
     je .oldest
     cmp qword [view_sort],2
@@ -393,6 +438,29 @@ compare_rows:
     test rax,rax
     jz .newest
     ret
+.priority:
+    mov rax,[rdi+T_PRIORITY]
+    mov rdx,[rsi+T_PRIORITY]
+    mov rdx,[priority_ranks+rdx*8]
+    sub rdx,[priority_ranks+rax*8]
+    mov rax,rdx
+    test rax,rax
+    jz .newest
+    ret
+.due:
+    mov rax,[rdi+T_DUE]
+    mov rdx,[rsi+T_DUE]
+    test rax,rax
+    jnz .due_rhs
+    mov rax,253402300800 ; no date sorts last
+.due_rhs:
+    test rdx,rdx
+    jnz .due_compare
+    mov rdx,253402300800
+.due_compare:
+    sub rax,rdx
+    jz .newest
+    ret
 
 ; Count and filter once, then stable bottom-up merge sort, O(n log n).
 build_view:
@@ -402,6 +470,8 @@ build_view:
     push r14
     push r15
     sub rsp,16
+    call today_epoch
+    mov [view_today],rax
     mov qword [view_total],0
     mov qword [view_done],0
     mov qword [view_count],0
@@ -429,12 +499,39 @@ build_view:
     jne .filter
     inc qword [view_done]
 .filter:
+    cmp qword [view_filter],3
+    jae .date_filter
     cmp qword [view_filter],0
     je .query
     mov rax,[view_filter]
     dec rax
     cmp [rbx+8],al
     jne .next
+    jmp .query
+.date_filter:
+    cmp byte [rbx+8],0
+    jne .next
+    mov rax,[rbx+T_DUE]
+    test rax,rax
+    jz .next
+    cmp qword [view_filter],3
+    jne .future
+    cmp rax,[view_today]
+    jne .next
+    jmp .query
+.future:
+    cmp qword [view_filter],5
+    jne .upcoming
+    cmp rax,[view_today]
+    jae .next
+    jmp .query
+.upcoming:
+    cmp rax,[view_today]
+    jbe .next
+    mov rdx,[view_today]
+    add rdx,7*86400
+    cmp rax,rdx
+    ja .next
 .query:
     lea rdi,[rbx+17]
     mov rsi,view_query

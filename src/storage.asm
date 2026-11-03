@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 extern parse_metadata, format_metadata, validate_metadata_graph
+extern apply_properties, property_task, property_flags
 
 global find_todo, duplicate_todo
 global find_any_todo, split_field, storage_version, save_legacy_snapshot
@@ -627,6 +628,8 @@ append_todo:
     stosb
     test al,al
     jnz .copy
+    mov rdi,r8
+    call apply_properties
     call save_snapshot
     pop rbx
     ret
@@ -671,6 +674,8 @@ complete_todo:
     call find_todo
     test rax,rax
     jz missing_todo
+    cmp byte [rax+8],1
+    je .already_done
     mov byte [rax+8],1
     push rax
     mov eax,SYS_TIME
@@ -682,6 +687,9 @@ complete_todo:
     mov [rdx+T_COMPLETED],rax
 .saved_time:
     jmp save_snapshot
+.already_done:
+    xor eax,eax
+    ret
 reopen_todo:
     call find_todo
     test rax,rax
@@ -702,12 +710,15 @@ edit_todo:
     pop rsi
     test rax,rax
     jz missing_todo
+    push rax
     lea rdi,[rax+17]
 .copy:
     lodsb
     stosb
     test al,al
     jnz .copy
+    pop rdi
+    call apply_properties
     jmp save_snapshot
 missing_todo:
     mov rax,-404
@@ -845,5 +856,10 @@ duplicate_todo:
     call find_todo
     test rax,rax
     jz missing_todo
+    mov rdx,[rax+T_PRIORITY]
+    mov [property_task+T_PRIORITY],rdx
+    mov rdx,[rax+T_DUE]
+    mov [property_task+T_DUE],rdx
+    mov qword [property_flags],3
     lea rdi,[rax+17]
     jmp append_todo

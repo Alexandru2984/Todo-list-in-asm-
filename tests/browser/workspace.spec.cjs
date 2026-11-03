@@ -160,7 +160,11 @@ test('public page and workspace meet automated WCAG A/AA checks', async ({ page 
   let result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(result.violations).toEqual([]);
   await open(page);
+  await page.locator('.task-properties > summary').click();
+  await page.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('urgent');
+  await page.getByLabel('Due date (UTC)', { exact: true }).fill('2027-02-28');
   await add(page, 'An accessible next step');
+  await page.locator('.task-properties > summary').click();
   result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(result.violations).toEqual([]);
   await page.getByRole('button', { name: 'Switch to dark theme' }).click();
@@ -211,5 +215,38 @@ test('complete workspace works with JavaScript disabled', async ({ browser, page
     await native.getByRole('link', { name: 'Clear completed', exact: true }).click();
     await native.getByRole('button', { name: 'Clear completed', exact: true }).click();
     await expect(native.locator('#task-list > li')).toHaveCount(1);
+  } finally { await context.close(); }
+});
+
+
+test('planner priority and due dates work without JavaScript on mobile and desktop', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await native.locator('.task-properties > summary').click();
+    await native.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('urgent');
+    await native.getByLabel('Due date (UTC)', { exact: true }).fill('2027-02-28');
+    await native.getByRole('textbox', { name: 'New task', exact: true }).fill('Native planner milestone');
+    await native.getByRole('button', { name: 'Add task', exact: true }).click();
+    await expect(native.locator('.priority-badge')).toHaveText('urgent priority');
+    await expect(native.locator('.due-badge')).toHaveText('Due 2027-02-28');
+    await menuAction(native, 'Native planner milestone', 'Edit');
+    const edit = native.locator('#action-form');
+    await expect(edit.getByRole('combobox', { name: 'Priority', exact: true })).toHaveValue('urgent');
+    await expect(edit.getByLabel('Due date (UTC)', { exact: true })).toHaveValue('2027-02-28');
+    await edit.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('low');
+    await edit.getByLabel('Due date (UTC)', { exact: true }).fill('');
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(native.locator('.priority-badge')).toHaveText('low priority');
+    await expect(native.locator('.due-badge')).toHaveCount(0);
+    await native.locator('.task-properties > summary').click();
+    for (const width of [320, 390, 768, 1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+    await native.setViewportSize(page.viewportSize());
+    await native.screenshot({ path: info.outputPath('planner.png'), fullPage: true });
   } finally { await context.close(); }
 });
