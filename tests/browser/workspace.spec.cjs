@@ -219,7 +219,7 @@ test('complete workspace works with JavaScript disabled', async ({ browser, page
 });
 
 
-test('planner priority and due dates work without JavaScript on mobile and desktop', async ({ browser, page }, info) => {
+test('planner priority, due dates and recurrence work without JavaScript on mobile and desktop', async ({ browser, page }, info) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
   const native = await context.newPage();
   try {
@@ -241,6 +241,16 @@ test('planner priority and due dates work without JavaScript on mobile and deskt
     await edit.getByRole('button', { name: 'Save changes' }).click();
     await expect(native.locator('.priority-badge')).toHaveText('low priority');
     await expect(native.locator('.due-badge')).toHaveCount(0);
+    await menuAction(native, 'Native planner milestone', 'Edit');
+    const recurrenceForm = native.locator('#action-form');
+    await recurrenceForm.getByLabel('Due date (UTC)', { exact: true }).fill('2031-01-31');
+    await recurrenceForm.getByRole('combobox', { name: 'Repeat', exact: true }).selectOption('monthly');
+    await recurrenceForm.getByRole('button', { name: 'Save changes' }).click();
+    await native.getByRole('button', { name: 'Complete task', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(2);
+    const nextOccurrence = native.locator('#task-list > li[data-done="0"]');
+    await expect(nextOccurrence.locator('.due-badge')).toHaveText('Due 2031-02-28');
+    await expect(nextOccurrence.locator('.repeat-badge')).toHaveText('Repeats monthly');
     await native.locator('.task-properties > summary').click();
     for (const width of [320, 390, 768, 1440]) {
       await native.setViewportSize({ width, height: 1000 });

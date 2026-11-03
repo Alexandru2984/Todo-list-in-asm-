@@ -3,6 +3,7 @@ DEFAULT ABS
 extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 extern parse_metadata, format_metadata, validate_metadata_graph
 extern apply_properties, property_task, property_flags
+extern next_occurrence
 
 global find_todo, duplicate_todo
 global find_any_todo, split_field, storage_version, save_legacy_snapshot
@@ -630,7 +631,10 @@ append_todo:
     jnz .copy
     mov rdi,r8
     call apply_properties
+    test rax,rax
+    js .property_error
     call save_snapshot
+.property_error:
     pop rbx
     ret
 .full:
@@ -671,24 +675,76 @@ find_any_todo:
     ret
 
 complete_todo:
+    push rbx
+    push r12
+    push r13
     call find_todo
     test rax,rax
-    jz missing_todo
-    cmp byte [rax+8],1
+    jz .missing
+    mov rbx,rax
+    cmp byte [rbx+8],1
     je .already_done
-    mov byte [rax+8],1
-    push rax
+    xor r13d,r13d ; next occurrence slot, if any
+    cmp qword [rbx+T_REPEAT],0
+    je .complete
+    cmp qword [todo_count],TASK_MAX
+    jae .full
+    mov rax,9223372036854775807
+    cmp [next_id],rax
+    jae .full
+    mov rdi,rbx
+    call next_occurrence
+    test rax,rax
+    js .done
+    mov r12,rax
+    mov r13,todos
+    mov ecx,SLOT_MAX
+.find_next:
+    cmp qword [r13],0
+    je .next_found
+    add r13,TASK_SIZE
+    dec ecx
+    jnz .find_next
+    jmp .full
+.next_found:
+    mov rsi,rbx
+    mov rdi,r13
+    mov ecx,TASK_SIZE/8
+    rep movsq
+    mov rax,[next_id]
+    mov [r13],rax
+    inc qword [next_id]
+    mov byte [r13+8],0
+    mov [r13+T_DUE],r12
+    mov qword [r13+T_COMPLETED],0
+    mov qword [r13+T_PARENT],0
+    mov qword [r13+T_DELETED],0
+    mov qword [r13+T_PREVIOUS],0
+    mov qword [r13+T_STAGE],0
+.complete:
     mov eax,SYS_TIME
     xor edi,edi
     syscall
-    pop rdx
-    cmp qword [rdx+T_COMPLETED],0
-    jne .saved_time
-    mov [rdx+T_COMPLETED],rax
-.saved_time:
-    jmp save_snapshot
+    mov [rbx+T_COMPLETED],rax
+    mov byte [rbx+8],1
+    test r13,r13
+    jz .save
+    mov [r13+9],rax
+.save:
+    call save_snapshot
+    jmp .done
+.missing:
+    mov rax,-404
+    jmp .done
+.full:
+    mov rax,-409
+    jmp .done
 .already_done:
     xor eax,eax
+.done:
+    pop r13
+    pop r12
+    pop rbx
     ret
 reopen_todo:
     call find_todo
@@ -719,7 +775,11 @@ edit_todo:
     jnz .copy
     pop rdi
     call apply_properties
+    test rax,rax
+    js .property_error
     jmp save_snapshot
+.property_error:
+    ret
 missing_todo:
     mov rax,-404
     ret

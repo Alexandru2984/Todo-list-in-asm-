@@ -14,7 +14,7 @@ commit without assistant/coauthor credits.
   native backup compatibility, add a native downgrade command and test rollback.
 - [x] Priorities/dates: low/normal/high/urgent, strict ISO dates, Today/Upcoming/
   Overdue views, priority/due sorts, completion timestamps and native forms.
-- [ ] Recurrence: daily/weekdays/weekly/monthly/yearly, calendar arithmetic,
+- [x] Recurrence: daily/weekdays/weekly/monthly/yearly, calendar arithmetic,
   clipped month/year dates with a retained anchor, no duplicate next occurrence
   on repeated completion; capacity failures must leave the original unchanged.
 - [ ] Projects/tags: bounded UTF-8 values, editable on native forms, exact folded
@@ -99,3 +99,7 @@ or compliance guarantee is inferred from this repository.
   passed; the corrected planner and expanded axe cases passed on desktop/mobile.
   155 independent Gregorian dates matched native parsing, including leap-century
   boundaries. JSON V2/extended CSV preserve metadata and bounded trash.
+
+- Recurrence stage: 84 native/protocol tests passed; native planner and expanded
+  axe browser cases passed on desktop/mobile. Independent recurrence oracles
+  covered 180 mixed schedules, clipped month/leap anchors and atomic failures.

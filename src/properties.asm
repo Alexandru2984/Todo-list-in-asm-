@@ -1,12 +1,14 @@
 %include "src/defs.inc"
 DEFAULT ABS
 extern strcmp, parse_date, copy_string, format_utc, html_escape
+extern recurrence_names, recurrence_anchor
 
 global reset_properties, parse_property, apply_properties, render_properties
  global property_flags, property_task, priority_names, render_task_badges
 section .data
     priority_key db 'priority',0
     due_key db 'due',0
+    repeat_key db 'repeat',0
     normal db 'normal',0
     low db 'low',0
     high db 'high',0
@@ -18,15 +20,18 @@ section .data
     selected db ' selected',0
     option_end db '</option>',0
     due_open db '</select></label><label>Due date (UTC)<input type="date" name="due" min="1970-01-02" max="9999-12-31" value="',0
-    form_close db '></label></div>',0
+    form_close db '></label><label>Repeat<select name="repeat"',0
+    repeat_close db '</select></label></div><p class="input-hint">Repeating tasks require a due date. Completing one creates the next occurrence after today.</p>',0
     badges_open db '<div class="task-badges">',0
     priority_open db '<span class="priority-badge" data-priority="',0
     priority_close db ' priority</span>',0
     badge_due db '<time class="due-badge">Due ',0
     time_close db '</time>',0
     div_close db '</div>',0
+    badge_repeat db '<span class="repeat-badge">Repeats ',0
+    span_close db '</span>',0
 section .bss
-    property_flags resq 1 ; 1 priority, 2 due
+    property_flags resq 1 ; 1 priority, 2 due, 4 repeat
     property_task resb TASK_SIZE
     date_buffer resb 24
 section .text
@@ -54,6 +59,11 @@ parse_property:
     call strcmp
     test rax,rax
     jz .due
+    mov rdi,rbx
+    mov rsi,repeat_key
+    call strcmp
+    test rax,rax
+    jz .repeat
     xor eax,eax
     jmp .done
 .priority:
@@ -87,6 +97,24 @@ parse_property:
     jle .bad ; zero is the explicit "no due date" storage sentinel
 .due_value:
     mov [property_task+T_DUE],rax
+    jmp .ok
+.repeat:
+    test qword [property_flags],4
+    jnz .bad
+    or qword [property_flags],4
+    xor ebx,ebx
+.repeat_loop:
+    mov rdi,r12
+    mov rsi,[recurrence_names+rbx*8]
+    call strcmp
+    test rax,rax
+    jz .repeat_value
+    inc ebx
+    cmp ebx,6
+    jb .repeat_loop
+    jmp .bad
+.repeat_value:
+    mov [property_task+T_REPEAT],rbx
 .ok:
     mov eax,1
     jmp .done
@@ -98,20 +126,56 @@ parse_property:
     ret
 
 apply_properties:
+    push rbx
+    push r12
+    push r13
+    mov rbx,rdi
+    mov r12,[rdi+T_DUE]
+    mov r13,[rdi+T_REPEAT]
     test qword [property_flags],1
     jz .due
     mov rax,[property_task+T_PRIORITY]
     mov [rdi+T_PRIORITY],rax
 .due:
     test qword [property_flags],2
-    jz .done
+    jz .repeat
     mov rax,[property_task+T_DUE]
     mov [rdi+T_DUE],rax
     test rax,rax
-    jnz .done
+    jnz .repeat
     mov qword [rdi+T_REPEAT],0
     mov qword [rdi+T_ANCHOR],0
+.repeat:
+    test qword [property_flags],4
+    jz .validate
+    mov rax,[property_task+T_REPEAT]
+    mov [rdi+T_REPEAT],rax
+.validate:
+    cmp qword [rdi+T_REPEAT],0
+    je .no_repeat
+    cmp qword [rdi+T_DUE],0
+    je .bad
+    cmp r12,[rdi+T_DUE]
+    jne .anchor
+    cmp r13,[rdi+T_REPEAT]
+    jne .anchor
+    cmp qword [rdi+T_ANCHOR],0
+    jne .ok
+.anchor:
+    call recurrence_anchor
+    mov [rbx+T_ANCHOR],rax
+    jmp .ok
+.no_repeat:
+    mov qword [rdi+T_ANCHOR],0
+.ok:
+    xor eax,eax
+    jmp .done
+.bad:
+    mov rax,-400
 .done:
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 ; Native add/edit/draft forms. rsi=slot, edx=1 attaches to external add-form.
@@ -166,6 +230,33 @@ render_properties:
     call .external
     mov rsi,form_close
     call copy_string
+    call .external
+    mov byte [rdi],'>'
+    inc rdi
+    xor r13d,r13d
+.repeat_option:
+    mov rsi,option_open
+    call copy_string
+    mov rsi,[recurrence_names+r13*8]
+    call copy_string
+    mov byte [rdi],'"'
+    inc rdi
+    cmp [rbx+T_REPEAT],r13
+    jne .repeat_label
+    mov rsi,selected
+    call copy_string
+.repeat_label:
+    mov byte [rdi],'>'
+    inc rdi
+    mov rsi,[recurrence_names+r13*8]
+    call copy_string
+    mov rsi,option_end
+    call copy_string
+    inc r13
+    cmp r13,6
+    jb .repeat_option
+    mov rsi,repeat_close
+    call copy_string
     pop r13
     pop r12
     pop rbx
@@ -214,6 +305,16 @@ render_task_badges:
     mov rsi,time_close
     call copy_string
 .close:
+    cmp qword [rbx+T_REPEAT],0
+    je .end
+    mov rsi,badge_repeat
+    call copy_string
+    mov rax,[rbx+T_REPEAT]
+    mov rsi,[recurrence_names+rax*8]
+    call copy_string
+    mov rsi,span_close
+    call copy_string
+.end:
     mov rsi,div_close
     call copy_string
     pop rbx

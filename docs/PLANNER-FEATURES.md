@@ -39,3 +39,20 @@ apostrophe. Bits 1, 2 and 4 of escapeFlags identify exactly which of these field
 received that added apostrophe. A future native importer can therefore remove
 one added prefix without corrupting an original leading apostrophe. CSV does not
 contain the workspace capability key. Treat all exports as private task data.
+
+## Recurrence
+
+Choose daily, weekdays (Monday to Friday), weekly, monthly or yearly in the native
+Repeat field. A repeating task requires a due date. Completing it marks the
+original done and creates one fresh active occurrence in the same atomic file
+commit. Repeating the completion request creates no duplicate. The new date is
+strictly after both today and the original due date, skipping missed backlog.
+
+Monthly series retain their original day anchor: January 31 becomes February 28
+(or 29), then March 31. Yearly February 29 series return to the 29th in leap years.
+Saving a title-only edit, or submitting an unchanged form, retains that anchor.
+Changing the due date explicitly resets it. New occurrences preserve priority,
+project, tags and prerequisites but begin outside the original parent and workflow
+stage. A full workspace, exhausted IDs, an unrepresentable next date or a failed
+write leaves the original completion unchanged. Existing completed legacy tasks
+stay idempotent and do not receive invented timestamps or new occurrences.
