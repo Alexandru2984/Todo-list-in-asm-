@@ -17,6 +17,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
   atomically on completion and retains month/leap-day anchors.
 - Native projects and tags with exact Unicode-aware filters, editable properties
   and spreadsheet-safe metadata exports.
+- Native subtasks and up to eight prerequisites, combined cycle checks, blocked
+  task view and server-enforced completion rules.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
   immediate input feedback and a desktop focus timer. It does not select, sort,
   count, edit or export tasks.

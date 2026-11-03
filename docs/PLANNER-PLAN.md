@@ -19,7 +19,7 @@ commit without assistant/coauthor credits.
   on repeated completion; capacity failures must leave the original unchanged.
 - [x] Projects/tags: bounded UTF-8 values, editable on native forms, exact folded
   filtering and preserved JSON/CSV exports. No separate runtime/database.
-- [ ] Subtasks/dependencies: parent links plus up to eight prerequisite IDs,
+- [x] Subtasks/dependencies: parent links plus up to eight prerequisite IDs,
   combined cycle detection, blocked-task view, completion checks, useful native
   property forms. No dangling references after permanent purge.
 - [ ] Undo/trash/activity: soft delete/restore, latest 200 trash items, one atomic
@@ -107,3 +107,8 @@ or compliance guarantee is inferred from this repository.
 - Projects/tag stage: 89 native/protocol tests passed, plus desktop/mobile native
   planner and axe cases. Folded exact filtering, canonical tag bounds, preserved
   links and worst-case escaped rendering have independent assertions.
+
+- Relationship stage: 96 native/protocol tests passed; six focused browser cases
+  passed across desktop/mobile, including no-JavaScript prerequisites and axe.
+  Mixed cycles, atomic rejection, subtree deletion, large IDs and worst-case
+  graph/escaped rendering are covered.

@@ -72,3 +72,24 @@ filter for `asm` does not match `assembly`. Filters combine with date/status,
 free-text search and sort, and remain present in native navigation links. Global
 workspace counters continue to include all live tasks. Names are escaped in
 HTML and encoded in URLs; exports retain the original UTF-8 text.
+
+## Subtasks and prerequisites
+
+Every row displays its task ID. **Add subtask** in an active task's menu prefills
+the new task's parent. Task details/Edit can set a parent ID (zero removes it) and
+up to eight comma-separated prerequisite IDs. IDs remain exact 64-bit decimals.
+Self-links, missing tasks, duplicate prerequisites and cycles fail without a write.
+The graph check includes both parent-to-child and task-to-prerequisite edges, so
+mixed cycles cannot leave the workspace impossible to complete.
+
+A task is blocked while any prerequisite is not completed, or any live child is
+active. The **Blocked** view lists these tasks; completion buttons explain the
+state, and the server independently refuses direct blocked completion requests.
+Deleting a prerequisite keeps its dependent blocked until the prerequisite is
+restored or the relationship is removed. Deleting a parent trashes its subtree.
+Permanent retention pruning detaches references to removed IDs.
+
+Reopen a completed parent before adding an active child or reopening its subtask.
+A completed task cannot acquire unfinished prerequisites. Duplication retains
+parent/prerequisite links and still validates them; recurring next occurrences
+start outside the original parent, while retaining prerequisite IDs.

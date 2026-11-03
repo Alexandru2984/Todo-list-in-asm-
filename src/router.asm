@@ -13,6 +13,7 @@ extern duplicate_todo
 extern export_json, export_csv
 extern reset_properties, parse_property, property_flags, property_task
 extern render_properties, render_task_badges
+extern task_ready
 section .data
     ok db 'HTTP/1.1 200 OK',13,10,0
     see_other db 'HTTP/1.1 303 See Other',13,10,0
@@ -95,7 +96,10 @@ section .data
     close_time db '</time>',0
     li_date db '</span><time class="task-date">',0
     menu_open db '<details class="task-menu"><summary aria-label="More task actions">&#8943;</summary><div class="task-menu-items"><a data-edit href="/app?edit=',0
-    menu_edit_end db '#action-form">Edit</a><form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
+    menu_edit_end db '#action-form">Edit</a>',0
+    menu_subtask db '<a href="/app?newparent=',0
+    menu_subtask_end db '#new-title">Add subtask</a>',0
+    menu_duplicate_start db '<form method="post" action="/duplicate"><input type="hidden" name="id" value="',0
     menu_duplicate_end db '"><button>Duplicate</button></form><a class="delete-button" href="/app?delete=',0
     menu_end db '#action-form">Delete</a></div></details></div></li>',10,0
     duplicate_path db '/duplicate',0
@@ -104,6 +108,7 @@ section .data
     complete_open db '<form method="post" action="/complete"><input type="hidden" name="id" value="',0
     reopen_open db '<form method="post" action="/reopen"><input type="hidden" name="id" value="',0
     complete_close db '"><button aria-label="Complete task">Done</button></form>',0
+    blocked_complete_close db '"><button aria-label="Complete task" disabled title="Complete prerequisites and subtasks first">Blocked</button></form>',0
     reopen_close db '"><button aria-label="Reopen task">Reopen</button></form>',0
     delete_open db '<form method="post" action="/delete"><input type="hidden" name="id" value="',0
     delete_close db '"><button class="delete-button" aria-label="Delete task">Delete</button></form></div></li>',10,0
@@ -123,7 +128,7 @@ section .data
     error_405 db 'This method is not allowed.',10
     error_405_len equ $-error_405
     status_409 db 'HTTP/1.1 409 Conflict',13,10,0
-    error_409 db 'Workspace capacity reached, or a different workspace is already open.',10
+    error_409 db 'This change conflicts with workspace capacity, task prerequisites, a completed parent or an existing session.',10
     error_409_len equ $-error_409
     status_411 db 'HTTP/1.1 411 Length Required',13,10,0
     error_411 db 'Content-Length is required.',10
@@ -1479,8 +1484,18 @@ render_app:
     call emit_number
     mov rsi,complete_close
     cmp byte [rbx+8],1
-    jne .close_action
+    jne .ready_action
     mov rsi,reopen_close
+    jmp .close_action
+.ready_action:
+    push rdi
+    mov rdi,rbx
+    call task_ready
+    pop rdi
+    mov rsi,complete_close
+    test rax,rax
+    jnz .close_action
+    mov rsi,blocked_complete_close
 .close_action:
     call copy_string
     mov rsi,menu_open
@@ -1488,6 +1503,17 @@ render_app:
     mov rax,[rbx]
     call emit_number
     mov rsi,menu_edit_end
+    call copy_string
+    cmp byte [rbx+8],1
+    je .duplicate_action
+    mov rsi,menu_subtask
+    call copy_string
+    mov rax,[rbx]
+    call emit_number
+    mov rsi,menu_subtask_end
+    call copy_string
+.duplicate_action:
+    mov rsi,menu_duplicate_start
     call copy_string
     mov rax,[rbx]
     call emit_number

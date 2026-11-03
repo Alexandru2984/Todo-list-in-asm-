@@ -44,6 +44,7 @@ section .data
     name_tag db 'tag',0
     name_project_url db 'project_url',0
     name_tag_url db 'tag_url',0
+    name_blocked_current db 'blocked_current',0
     markers:
         dq name_total,emit_counter,view_total,0
         dq name_done,emit_counter,view_done,0
@@ -81,6 +82,7 @@ section .data
         dq name_tag,emit_tag,0,0
         dq name_project_url,emit_project_url,0,0
         dq name_tag_url,emit_tag_url,0,0
+        dq name_blocked_current,emit_current,view_filter,6
         dq 0,0,0,0
     lit_page db 'page',0
     lit_false db 'false',0
@@ -93,14 +95,16 @@ section .data
     lit_today db 'today',0
     lit_upcoming db 'upcoming',0
     lit_overdue db 'overdue',0
-    filter_names dq lit_all,lit_active,lit_done,lit_today,lit_upcoming,lit_overdue
+    lit_blocked db 'blocked',0
+    filter_names dq lit_all,lit_active,lit_done,lit_today,lit_upcoming,lit_overdue,lit_blocked
     view_all db 'All tasks',0
     view_active_name db 'In progress',0
     view_done_name db 'Completed',0
     view_today_name db 'Today',0
     view_upcoming_name db 'Next 7 days',0
     view_overdue_name db 'Overdue',0
-    view_names dq view_all,view_active_name,view_done_name,view_today_name,view_upcoming_name,view_overdue_name
+    view_blocked_name db 'Blocked',0
+    view_names dq view_all,view_active_name,view_done_name,view_today_name,view_upcoming_name,view_overdue_name,view_blocked_name
     lit_newest db 'newest',0
     lit_oldest db 'oldest',0
     lit_az db 'az',0

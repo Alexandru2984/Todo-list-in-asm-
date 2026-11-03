@@ -4,6 +4,7 @@ extern strcmp, strlen, parse_uint, decode_value, decode_buf, decode_stripped
 extern get_todo_list, find_todo
 extern today_epoch
 extern tag_contains
+extern task_ready, property_task
 
 global parse_view, build_view, view_rows, view_count, view_total, view_done
  global view_active, view_percent, view_filter, view_sort, view_query, view_action
@@ -15,6 +16,7 @@ section .data
     key_query db 'q',0
     key_project db 'project',0
     key_tag db 'tag',0
+    key_newparent db 'newparent',0
     key_edit db 'edit',0
     key_delete db 'delete',0
     key_confirm db 'confirm',0
@@ -24,7 +26,8 @@ section .data
     filter_today db 'today',0
     filter_upcoming db 'upcoming',0
     filter_overdue db 'overdue',0
-    extra_filters dq filter_today,filter_upcoming,filter_overdue
+    filter_blocked db 'blocked',0
+    extra_filters dq filter_today,filter_upcoming,filter_overdue,filter_blocked
     sort_newest db 'newest',0
     sort_oldest db 'oldest',0
     sort_az db 'az',0
@@ -67,6 +70,7 @@ parse_view:
     mov byte [view_query],0
     mov byte [view_project],0
     mov byte [view_tag],0
+    mov qword [property_task+T_PARENT],0
     mov rbx,rdi
     test rbx,rbx
     jz .ok
@@ -131,6 +135,11 @@ parse_view:
     call strcmp
     test rax,rax
     jz .tag
+    mov rdi,rbx
+    mov rsi,key_newparent
+    call strcmp
+    test rax,rax
+    jz .newparent
     mov rdi,rbx
     mov rsi,key_edit
     call strcmp
@@ -209,7 +218,7 @@ parse_view:
     test rax,rax
     jz .extra_filter_value
     inc ebx
-    cmp ebx,3
+    cmp ebx,4
     jb .extra_filter_loop
     jmp .bad
 .extra_filter_value:
@@ -310,6 +319,16 @@ parse_view:
     je .bad
     stosb
     loop .copy_tag
+    jmp .next
+.newparent:
+    test qword [view_flags],64
+    jnz .bad
+    or qword [view_flags],64
+    mov rdi,decode_buf
+    call parse_uint
+    test rax,rax
+    jle .bad
+    mov [property_task+T_PARENT],rax
 .next:
     mov rbx,r13
     jmp .field
@@ -524,6 +543,15 @@ build_view:
     mov qword [view_total],0
     mov qword [view_done],0
     mov qword [view_count],0
+    mov rdi,[property_task+T_PARENT]
+    test rdi,rdi
+    jz .action
+    call find_todo
+    test rax,rax
+    jz .missing
+    cmp byte [rax+8],1
+    je .conflict
+.action:
     cmp qword [view_action],1
     je .find_target
     cmp qword [view_action],2
@@ -548,6 +576,8 @@ build_view:
     jne .filter
     inc qword [view_done]
 .filter:
+    cmp qword [view_filter],6
+    je .blocked
     cmp qword [view_filter],3
     jae .date_filter
     cmp qword [view_filter],0
@@ -556,6 +586,14 @@ build_view:
     dec rax
     cmp [rbx+8],al
     jne .next
+    jmp .query
+.blocked:
+    cmp byte [rbx+8],0
+    jne .next
+    mov rdi,rbx
+    call task_ready
+    test rax,rax
+    jnz .next
     jmp .query
 .date_filter:
     cmp byte [rbx+8],0
@@ -681,6 +719,9 @@ build_view:
     jmp .done
 .missing:
     mov rax,-404
+    jmp .done
+.conflict:
+    mov rax,-409
 .done:
     add rsp,16
     pop r15

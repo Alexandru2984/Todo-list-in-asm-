@@ -3,6 +3,8 @@ DEFAULT ABS
 extern strcmp, parse_date, copy_string, format_utc, html_escape
 extern recurrence_names, recurrence_anchor
 extern normalize_tags, strlen
+extern parse_uint, parse_dependencies, validate_relation_change
+extern render_relation_fields, render_relation_badges
 
 global reset_properties, parse_property, apply_properties, render_properties
  global property_flags, property_task, priority_names, render_task_badges
@@ -12,6 +14,8 @@ section .data
     repeat_key db 'repeat',0
     project_key db 'project',0
     tags_key db 'tags',0
+    parent_key db 'parent',0
+    deps_key db 'deps',0
     normal db 'normal',0
     low db 'low',0
     high db 'high',0
@@ -83,6 +87,16 @@ parse_property:
     call strcmp
     test rax,rax
     jz .tags
+    mov rdi,rbx
+    mov rsi,parent_key
+    call strcmp
+    test rax,rax
+    jz .parent
+    mov rdi,rbx
+    mov rsi,deps_key
+    call strcmp
+    test rax,rax
+    jz .deps
     xor eax,eax
     jmp .done
 .priority:
@@ -153,6 +167,26 @@ parse_property:
     mov rdi,r12
     mov rsi,property_task+T_TAGS
     call normalize_tags
+    test rax,rax
+    js .bad
+    jmp .ok
+.parent:
+    test qword [property_flags],32
+    jnz .bad
+    or qword [property_flags],32
+    mov rdi,r12
+    call parse_uint
+    test rax,rax
+    js .bad
+    mov [property_task+T_PARENT],rax
+    jmp .ok
+.deps:
+    test qword [property_flags],64
+    jnz .bad
+    or qword [property_flags],64
+    mov rdi,r12
+    mov rsi,property_task
+    call parse_dependencies
     test rax,rax
     js .bad
 .ok:
@@ -263,6 +297,27 @@ apply_properties:
     mov ecx,TAGS_MAX+1
     rep movsb
 .success:
+    test qword [property_flags],32
+    jz .deps
+    mov rax,[property_task+T_PARENT]
+    mov [rbx+T_PARENT],rax
+.deps:
+    test qword [property_flags],64
+    jz .relations
+    lea rdi,[rbx+T_DEPS]
+    mov rsi,property_task+T_DEPS
+    mov ecx,DEP_MAX
+    rep movsq
+    mov rax,[property_task+T_DEP_COUNT]
+    mov [rbx+T_DEP_COUNT],rax
+.relations:
+    mov rsi,[property_flags]
+    test rsi,96
+    jz .valid
+    mov rdi,rbx
+    call validate_relation_change
+    jmp .done
+.valid:
     xor eax,eax
     jmp .done
 .bad:
@@ -370,6 +425,9 @@ render_properties:
     call .external
     mov rsi,input_close
     call copy_string
+    mov rsi,rbx
+    mov rdx,r12
+    call render_relation_fields
     mov rsi,properties_close
     call copy_string
     pop r13
@@ -448,6 +506,8 @@ render_task_badges:
     mov rsi,span_close
     call copy_string
 .badges_end:
+    mov rsi,rbx
+    call render_relation_badges
     mov rsi,div_close
     call copy_string
     pop rbx

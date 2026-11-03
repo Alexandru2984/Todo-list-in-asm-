@@ -4,6 +4,7 @@ extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
 extern parse_metadata, format_metadata, validate_metadata_graph
 extern apply_properties, property_task, property_flags
 extern next_occurrence
+extern task_ready
 
 global find_todo, duplicate_todo
 global find_any_todo, split_field, storage_version, save_legacy_snapshot
@@ -366,6 +367,7 @@ load_todos:
     mov qword [rdi],0
     jmp .count_next
 .live_count:
+    mov byte [rdi+T_META],1
     inc qword [todo_count]
 .count_next:
     add rdi,TASK_SIZE
@@ -618,6 +620,7 @@ append_todo:
     mov [r8],rax
     inc qword [next_id]
     mov byte [r8+8],0
+    mov byte [r8+T_META],1
     mov eax,SYS_TIME
     xor edi,edi
     syscall
@@ -684,6 +687,10 @@ complete_todo:
     mov rbx,rax
     cmp byte [rbx+8],1
     je .already_done
+    mov rdi,rbx
+    call task_ready
+    test rax,rax
+    jz .full
     xor r13d,r13d ; next occurrence slot, if any
     cmp qword [rbx+T_REPEAT],0
     je .complete
@@ -750,9 +757,23 @@ reopen_todo:
     call find_todo
     test rax,rax
     jz missing_todo
+    mov r8,rax
+    mov rdi,[rax+T_PARENT]
+    test rdi,rdi
+    jz .reopen
+    call find_any_todo
+    test rax,rax
+    jz .conflict
+    cmp byte [rax+8],0
+    jne .conflict
+.reopen:
+    mov rax,r8
     mov byte [rax+8],0
     mov qword [rax+T_COMPLETED],0
     jmp save_snapshot
+.conflict:
+    mov rax,-409
+    ret
 delete_todo:
     call find_todo
     test rax,rax
@@ -928,6 +949,12 @@ duplicate_todo:
     lea rsi,[rax+T_TAGS]
     mov ecx,TAGS_MAX+1
     rep movsb
-    mov qword [property_flags],27
+    mov rdx,[rax+T_PARENT]
+    mov [property_task+T_PARENT],rdx
+    lea rdi,[property_task+T_DEPS]
+    lea rsi,[rax+T_DEPS]
+    mov ecx,DEP_MAX+1 ; includes adjacent dependency count
+    rep movsq
+    mov qword [property_flags],123
     lea rdi,[rax+17]
     jmp append_todo

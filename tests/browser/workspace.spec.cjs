@@ -269,3 +269,31 @@ test('planner priority, due dates and recurrence work without JavaScript on mobi
     await native.screenshot({ path: info.outputPath('planner.png'), fullPage: true });
   } finally { await context.close(); }
 });
+
+
+test('native subtasks and prerequisites prevent blocked completion without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await add(native, 'Parent milestone');
+    await add(native, 'Independent prerequisite');
+    await menuAction(native, 'Parent milestone', 'Add subtask');
+    const details = native.locator('.task-properties');
+    await details.locator('summary').click();
+    await expect(details.getByLabel('Parent task ID (0 for none)', { exact: true })).toHaveValue('1');
+    await details.getByLabel('Prerequisite IDs (comma separated)', { exact: true }).fill('2');
+    await add(native, 'Child milestone');
+    const child = native.locator('#task-list > li').filter({ hasText: 'Child milestone' });
+    await expect(child.getByRole('button', { name: 'Complete task', exact: true })).toBeDisabled();
+    await native.getByRole('link', { name: 'Blocked', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(2);
+    await native.screenshot({ path: info.outputPath('relations.png'), fullPage: true });
+    await native.locator('.filter-tabs [data-filter=all]').click();
+    await native.locator('#task-list > li').filter({ hasText: 'Independent prerequisite' }).getByRole('button', { name: 'Complete task', exact: true }).click();
+    await native.locator('#task-list > li').filter({ hasText: 'Child milestone' }).getByRole('button', { name: 'Complete task', exact: true }).click();
+    await native.locator('#task-list > li').filter({ hasText: 'Parent milestone' }).getByRole('button', { name: 'Complete task', exact: true }).click();
+    await expect(native.locator('#progress-percent')).toHaveText('100%');
+  } finally { await context.close(); }
+});
