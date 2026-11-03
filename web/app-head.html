@@ -1,2 +1,31 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>My workspace — ASM TODO</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head><body data-page="app"><main class="wrap"><a href="/">ASM TODO</a><h1>My workspace</h1><form action="/add" method="post" id="add-form"><label for="new-title">What needs doing?</label><input id="new-title" name="title" required maxlength="110" autocomplete="off"><button>Add task</button></form><p id="stats" aria-live="polite"></p><ul id="task-list">
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light dark">
+<title>My workspace — ASM TODO</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script>
+</head>
+<body data-page="app">
+<a class="skip-link" href="#main">Skip to tasks</a>
+<div class="app-shell">
+<aside class="sidebar" aria-label="Workspace navigation">
+<a href="/" class="brand"><span class="brand-mark" aria-hidden="true">a<span>•</span></span><span>asm<span class="brand-todo">/ todo</span></span></a>
+<div class="workspace-label"><span class="workspace-avatar" aria-hidden="true">Y</span><div>Your workspace<small>A little space to get things done</small></div><span class="status-dot" title="Personal workspace"></span></div>
+<p class="nav-label">WORKSPACE</p>
+<nav class="view-nav" aria-label="Task views">
+<button class="nav-item selected" data-filter="all" aria-pressed="true"><span aria-hidden="true">▦</span>All tasks<span class="nav-count" data-count="total">0</span></button>
+<button class="nav-item" data-filter="active" aria-pressed="false"><span aria-hidden="true">◷</span>In progress<span class="nav-count" data-count="active">0</span></button>
+<button class="nav-item" data-filter="done" aria-pressed="false"><span aria-hidden="true">✓</span>Completed<span class="nav-count" data-count="done">0</span></button>
+</nav>
+<div class="focus-card"><div class="focus-heading"><span aria-hidden="true">✳</span> A moment of focus</div><p>One thing at a time. You’ve got this.</p><span id="timer-display" class="timer-display" aria-label="Focus timer">25:00</span><div class="timer-actions"><button id="timer-toggle">Start focus</button><button id="timer-reset" class="timer-reset" aria-label="Reset focus timer">↺</button></div></div>
+<div class="sidebar-bottom"><button class="sidebar-tool" id="workspace-settings"><span aria-hidden="true">⚙</span>Workspace &amp; backups</button><a class="sidebar-tool" href="/#how-it-works"><span aria-hidden="true">↗</span>The story behind ASM TODO</a><div class="built-note"><span class="status-dot"></span> Small binary. Big intentions.</div></div>
+</aside>
+<div class="main-column">
+<header class="topbar"><div class="breadcrumbs">Workspace<span>/</span><strong id="breadcrumb-view">All tasks</strong></div><div class="topbar-actions"><span class="today-date" id="today-date"></span><button class="icon-button theme-toggle" aria-label="Switch to dark theme" aria-pressed="false" title="Toggle theme">◐</button></div></header>
+<main id="main" class="workspace-main">
+<section class="page-heading"><div><p class="eyebrow">A CLEARER MIND STARTS HERE</p><h1>Make room for<br>what <span>matters.</span></h1><p class="page-subtitle">Big plans, small steps. Let’s make a little progress today.</p></div><div class="heading-art" aria-hidden="true"><span class="art-orbit"></span><span class="art-check">✓</span><span class="art-spark">✳</span></div></section>
+<section class="stat-grid" aria-label="Workspace overview"><div class="stat-card"><span class="stat-icon" aria-hidden="true">▦</span><div><span class="stat-label">Total tasks</span><strong data-count="total">0</strong></div><span class="stat-caption">Ideas in motion</span></div><div class="stat-card"><span class="stat-icon" aria-hidden="true">◷</span><div><span class="stat-label">In progress</span><strong data-count="active">0</strong></div><span class="stat-caption">One step at a time</span></div><div class="stat-card stat-complete"><span class="stat-icon" aria-hidden="true">✓</span><div><span class="stat-label">Completed</span><strong data-count="done">0</strong></div><span class="stat-caption">Give yourself some credit</span></div></section>
+<section class="tasks-panel" aria-labelledby="tasks-heading">
+<div class="panel-heading"><h2 id="tasks-heading">Your tasks<span id="visible-count" class="count-pill">0</span></h2><div class="panel-options"><button class="text-button" id="export-menu">↗ Export</button><button class="text-button" id="clear-trigger">Clear completed</button></div></div>
+<form action="/add" method="post" id="add-form" class="add-form"><span class="add-symbol" aria-hidden="true">+</span><label for="new-title" class="sr-only">New task</label><input id="new-title" name="title" placeholder="What would you like to get done?" required maxlength="110" autocomplete="off" aria-describedby="title-hint"><button class="primary-button" type="submit">Add task <span aria-hidden="true">↵</span></button></form><p id="title-hint" class="input-hint">Keep it simple. One task, one next step. <span id="title-bytes">0 / 110 bytes</span></p>
+<div class="list-toolbar"><div class="filter-tabs" role="group" aria-label="Filter tasks"><button data-filter="all" class="selected" aria-pressed="true">All tasks</button><button data-filter="active" aria-pressed="false">Active</button><button data-filter="done" aria-pressed="false">Done</button></div><div class="search-sort"><label class="search-field"><span aria-hidden="true">⌕</span><span class="sr-only">Search tasks</span><input id="search-tasks" type="search" placeholder="Search tasks…" autocomplete="off"><kbd>/</kbd></label><label class="sort-field"><span class="sr-only">Sort tasks</span><select id="sort-tasks"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="az">Title A–Z</option><option value="active">Active first</option></select></label></div></div>
+<ul id="task-list" class="task-list" aria-label="Tasks">

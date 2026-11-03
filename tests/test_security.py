@@ -200,7 +200,7 @@ class SecurityTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(int(headers['Content-Length']), len(body))
                 self.assertTrue(headers['Content-Type'].startswith(mime))
-                self.assertEqual(headers['Referrer-Policy'], 'no-referrer')
+                self.assertEqual(headers['Referrer-Policy'], 'strict-origin')
                 self.assertEqual(headers['X-Frame-Options'], 'DENY')
                 self.assertNotIn('unsafe-inline', headers['Content-Security-Policy'])
                 hs, hh, hb = self.server.request('HEAD', route)
@@ -286,6 +286,38 @@ class SecurityTests(unittest.TestCase):
         stack = next(line for line in output.splitlines() if 'GNU_STACK' in line)
         self.assertIn('RW ', stack)
         self.assertNotIn('RWE', stack)
+
+    def test_recovery_key_requires_cookie_and_is_attachment(self):
+        self.assertEqual(self.server.request('GET', '/recovery')[0], 401)
+        status, headers, body = self.server.request('GET', '/recovery', cookie=self.cookie)
+        self.assertEqual(status, 200)
+        self.assertEqual(body.decode().strip(), self.cookie.split('=')[1])
+        self.assertIn('attachment', headers['Content-Disposition'])
+        self.assertIn('noindex', headers['X-Robots-Tag'])
+
+    def test_child_absolute_deadline_bounds_slow_drip_feeding(self):
+        import time
+        with socket.create_connection(('127.0.0.1', self.server.port), timeout=4) as sock:
+            start = time.monotonic()
+            disconnected = False
+            for _ in range(10):
+                try:
+                    sock.sendall(b'G')
+                    time.sleep(2)
+                    sock.setblocking(False)
+                    try:
+                        if sock.recv(1) == b'':
+                            disconnected = True
+                            break
+                    except BlockingIOError:
+                        pass
+                    finally:
+                        sock.setblocking(True)
+                except (BrokenPipeError, ConnectionResetError):
+                    disconnected = True
+                    break
+            self.assertTrue(disconnected)
+            self.assertLess(time.monotonic() - start, 19)
 
     def test_forget_clears_cookie_without_deleting_tasks(self):
         self.add()

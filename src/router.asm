@@ -12,7 +12,7 @@ section .data
     see_other db 'HTTP/1.1 303 See Other',13,10,0
     common_headers db "Cache-Control: no-store",13,10
         db "X-Content-Type-Options: nosniff",13,10
-        db "Referrer-Policy: no-referrer",13,10
+        db "Referrer-Policy: strict-origin",13,10
         db "X-Frame-Options: DENY",13,10
         db "Permissions-Policy: camera=(), microphone=(), geolocation=()",13,10
         db "Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",13,10
@@ -40,6 +40,12 @@ section .data
     http db 'http://',0
     same_origin db 'same-origin',0
     fetch_none db 'none',0
+    social_path db '/social-card.png',0
+    mime_png db 'image/png',0
+    social: incbin 'web/social-card.png'
+    social_len equ $-social
+    recovery_path db '/recovery',0
+    recovery_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-workspace-key.txt"',13,10,0
     key_title db 'title',0
     key_id db 'id',0
     key_token db 'token',0
@@ -756,6 +762,16 @@ handle_request:
     jne .method
 .read:
     mov rdi,request_path
+    mov rsi,social_path
+    call strcmp
+    test rax,rax
+    jz .get_social
+    mov rdi,request_path
+    mov rsi,recovery_path
+    call strcmp
+    test rax,rax
+    jz .get_recovery
+    mov rdi,request_path
     mov rsi,path_0
     call strcmp
     test rax,rax
@@ -902,6 +918,27 @@ handle_request:
     test rax,rax
     jz .post_clear
     jmp .missing
+.get_social:
+    mov rdi,r12
+    mov rsi,social
+    mov edx,social_len
+    mov rcx,ok
+    mov r8,mime_png
+    mov r9,empty
+    call respond
+    jmp .done
+.get_recovery:
+    cmp byte [current_uid],0
+    je .unauthorized
+    mov byte [current_uid+32],10
+    mov rdi,r12
+    mov rsi,current_uid
+    mov edx,33
+    mov rcx,ok
+    mov r8,mime_text
+    mov r9,recovery_headers
+    call respond
+    jmp .done
 .get_app:
     cmp byte [current_uid],0
     jne .load_app
