@@ -5,7 +5,7 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 
 [Live site](https://asm.micutu.com/) · [Audit](docs/AUDIT.md) ·
 [Security model](docs/SECURITY.md) · [Roadmap](docs/ROADMAP.md) ·
-[Operations](docs/RUNBOOK.md) · [Next iteration](docs/PRODUCTIVITY-PLAN.md)
+[Operations](docs/RUNBOOK.md) · [Productivity plan](docs/PRODUCTIVITY-PLAN.md)
 
 ## What works
 

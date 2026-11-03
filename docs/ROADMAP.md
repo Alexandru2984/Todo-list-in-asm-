@@ -35,6 +35,13 @@ preview/merge/replace import. Storage revision 3 reads V1/V2 and provides a
 native offline preflight/downgrade path. See [features](PLANNER-FEATURES.md) and
 [release verification](RELEASE.md) for release status and checks.
 
+## Release 4 — capture and calendar interoperability
+
+Released on 2026-11-04: native one-title-per-line capture with preview and atomic
+undo, plus private .ics downloads for scheduled tasks. Essential flows work
+without JavaScript; storage revision 3 remains compatible. See the completed
+[productivity delivery plan and proposed next steps](PRODUCTIVITY-PLAN.md).
+
 ## Next — additional organization
 
 - Manual drag ordering with equivalent keyboard controls; the native board and

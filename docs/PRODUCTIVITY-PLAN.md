@@ -15,7 +15,7 @@ Tests use disposable storage and spare ports, never existing production sessions
   tasks as all-day, non-blocking VEVENTs. Escape text, fold UTF-8 content lines,
   keep UIDs stable without disclosing the access key, omit trash/undated tasks.
   Export existing occurrences only; no automatic sync or extra recurring events.
-- [ ] Release: local native/protocol/backup checks, desktop/mobile no-JavaScript
+- [x] Release: local native/protocol/backup checks, desktop/mobile no-JavaScript
   and axe checks, actual green GitHub Actions, isolated service sandbox rehearsal,
   scoped production deploy and fresh-workspace HTTPS/backup verification.
 
@@ -52,12 +52,23 @@ model. They are future candidates, not features delivered by this iteration.
 Quick capture: 145 integration tests passed, including five new boundary,
 validation, Unicode, capacity and atomic-failure cases. Four focused browser
 cases passed on desktop/mobile, including no-JavaScript undo/redo and light/dark
-axe checks. Final remote CI and deployment remain pending until both features
-are complete.
+axe checks. See the final release checkpoint below.
 
 Calendar stage: 151 integration tests passed. Six independent calendar cases
 cover private/HEAD policy, exact SHA-256 UID oracles, metadata/UTF-8 escaping,
 recurrence snapshots, corrupt storage and 1,000 dated events with random/boundary
 dates. The expanded fresh-workspace probe passed under the exact production
 service sandbox, followed by native backup verification and isolated restore.
-Final full browser/remote CI/deployment checks remain the release stage.
+See the final release checkpoint below.
+
+Final release: 151 local integration checks and all 38 desktop/mobile browser
+cases passed. Actual GitHub Actions 41740662580 passed both jobs for functional
+commit 9b50cee. The release is live: native direct/HTTPS probes cover both new
+features, and public mobile Chromium without JavaScript passed capture/undo/redo,
+date editing and calendar download. Existing task-file hashes/workspace count
+matched the private pre-release baseline after fresh-probe cleanup. The actual
+backup service and latest native archive passed independent extraction/hash
+comparison and isolated native storage validation. No storage revision, service
+permissions or optional browser JavaScript changed. Release snapshot:
+/var/backups/asm-todo/releases/20261103T234023Z. Proposed follow-ups above are
+future work, separate from this completed two-feature delivery.

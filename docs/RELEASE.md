@@ -8,6 +8,13 @@ framework, interpreter or database runtime was added.
 
 ## Delivered
 
+- Quick capture accepts one literal title per line, validates/ previews the
+  complete batch and appends atomically with fresh IDs/current timestamps and
+  one undo step. Empty lines are ignored; UTF-8/title/capacity bounds are enforced.
+- Private .ics downloads export dated live tasks as one-day non-blocking calendar
+  reminders, with escaped/folded UTF-8 text and stable SHA-256 event identifiers.
+  The attachment contains no bearer key and exports existing occurrences only.
+
 - Priorities, strict UTC due dates, Today/Next 7 days/Overdue views and native sorts.
 - Daily/weekday/weekly/monthly/yearly recurrence with retained month/leap anchors.
 - Projects/tags, subtasks, prerequisites, combined cycle validation and blocked tasks.
@@ -44,11 +51,11 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Verification
 
-- **140 local integration tests passed**: protocol, storage/revisions, recurrence,
+- **151 local integration tests passed**: protocol, storage/revisions, recurrence,
   metadata/relationships, history, query/layout/statistics, exports/imports, native
   backup/legacy archive compatibility, deployment probes, real isolated nginx
   policy and public crawler resources. JavaScript syntax and patch checks passed.
-- **32 browser tests passed** on desktop and Pixel 5 emulation, including native
+- **38 browser tests passed** on desktop and Pixel 5 emulation, including native
   no-JavaScript workflows, import preview/merge/replace/undo, layout checks at
   320/390/768/1440 px and automated axe WCAG A/AA checks in light/dark themes.
   Automated axe results are not an accessibility certification.
@@ -57,9 +64,9 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   JSON/CSV, overflow, Unicode/surrogates, formula text, source-reference isolation,
   combined cycles, capacity/write failures and concurrent import rejection.
 - Development dependency audit reported zero known vulnerabilities.
-- Actual GitHub Actions [run 41737981261](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41737981261)
-  passed both security-and-storage (**140 tests**) and browser-and-accessibility
-  (**32 tests**) for functional release commit **0093189**. Earlier per-stage
+- Actual GitHub Actions [run 41740662580](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41740662580)
+  passed both security-and-storage (**151 tests**) and browser-and-accessibility
+  (**38 tests**) for functional release commit **9b50cee**. Earlier per-stage
   commits also have successful runs. The original dark-theme CI contrast failure
   was repaired without disabling axe checks.
 - The exact production service sandbox passed a fresh-workspace rehearsal on a
@@ -71,16 +78,18 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 ## Production verification
 
 - deploy/apply.sh created a private binary/config/data rollback snapshot at
-  /var/backups/asm-todo/releases/20261103T231934Z, stopped ASM traffic, validated
+  /var/backups/asm-todo/releases/20261103T234023Z, stopped ASM traffic, validated
   existing storage without rewriting tasks, atomically installed the binaries,
   then passed direct and public HTTPS fresh-workspace probes.
 - Those probes covered native CRUD, structured search, recurrence/anchors,
   board/calendar, private SVG, large import preview/confirmation/undo, trash/purge,
-  download correctness, session/CSP/noindex/no-transform policy and absence of
+  quick capture/undo, private .ics snapshots, download correctness, session/CSP/noindex/no-transform policy and absence of
   unexpected edge script injection. Every probe removed only its own fresh UID.
 - Public HTTPS Chromium with JavaScript disabled additionally passed the mobile
   planner/board/calendar workflow, completion statistics and responsive widths
-  from 320 to 1440 px. Its temporary workspace was removed after inspection.
+  from 320 to 1440 px. The productivity increment additionally passed public
+  mobile capture/atomic undo/redo, date editing and the actual calendar download.
+  Temporary workspaces were removed after inspection.
 - Original production task-file SHA-256 hashes and workspace count matched the
   private pre-release baseline after all probe cleanup. No existing workspace
   was used for test mutations.
