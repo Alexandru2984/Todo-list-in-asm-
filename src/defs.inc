@@ -4,6 +4,8 @@
 %define SYS_OPEN    2
 %define SYS_CLOSE   3
 %define SYS_STAT    4
+%define SYS_FSTAT   5
+%define SYS_FTRUNCATE 77
 %define SYS_LSEEK   8
 %define SYS_MMAP    9
 %define SYS_MUNMAP  11
@@ -73,6 +75,30 @@
 %define O_NOFOLLOW    131072
 %define O_DIRECTORY   65536
 %define O_CLOEXEC     524288
+%define O_NONBLOCK    2048
 %define REQUEST_MAX   4095
 %define TASK_MAX      1000
 %define TITLE_MAX     110
+
+; Shared planner ABI. The original ID/status/created/title prefix stays intact.
+%define SLOT_MAX      1200
+%define TASK_SIZE     512
+%define STORAGE_MAX   2097152
+%define T_PRIORITY    128
+%define T_DUE         136
+%define T_COMPLETED   144
+%define T_PARENT      152
+%define T_REPEAT      160
+%define T_PROJECT     168
+%define T_TAGS        208
+%define T_DELETED     280
+%define T_DEPS        288
+%define T_DEP_COUNT   352
+%define T_STAGE       360
+%define T_PREVIOUS    368
+%define T_ANCHOR      376
+%define T_META        400
+%define T_COLOR       408
+%define PROJECT_MAX   32
+%define TAGS_MAX      64
+%define DEP_MAX       8

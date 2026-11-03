@@ -19,6 +19,11 @@ cp -a /etc/nginx/sites-available/asm.micutu.com-canary "$BACKUP_DIR/asm.nginx.co
 cp -a /etc/nginx/conf.d/asm-rate-limit.conf "$BACKUP_DIR/asm-limits.conf"
 if [[ -f /etc/nginx/snippets/asm-proxy.conf ]]; then cp -a /etc/nginx/snippets/asm-proxy.conf "$BACKUP_DIR/asm-proxy.conf"; fi
 cp -a bin/server "$BACKUP_DIR/server"
+# Old releases do not implement this read-only command. A successful exact
+# response identifies a V2-aware rollback target; otherwise conversion is needed.
+PREVIOUS_STORAGE_VERSION=1
+if [[ $(bin/server --storage-version 2>/dev/null || true) == 2 ]]; then PREVIOUS_STORAGE_VERSION=2; fi
+printf '%s\n' "$PREVIOUS_STORAGE_VERSION" > "$BACKUP_DIR/previous-storage-version"
 if [[ -f bin/backup ]]; then cp -a bin/backup "$BACKUP_DIR/backup"; fi
 cp -a /etc/systemd/system/asm-backup.service "$BACKUP_DIR/asm-backup.service"
 printf '%s\n' "$LIVE_WORKDIR" > "$BACKUP_DIR/previous-working-directory"
@@ -35,8 +40,27 @@ rollback() {
     if [[ $SUCCESS == 0 ]]; then
         echo "Deployment failed; restoring ASM service/configuration from $BACKUP_DIR" >&2
         if [[ $STOPPED == 1 ]]; then systemctl stop asm-canary.service || true; fi
-        # Preserve task changes made during the brief release window. Both the
-        # legacy and new loaders can read record snapshots with a #next header.
+        # Never place the V1 binary over V2 files. Preserve the entire V2 state
+        # first; the native offline converter preflights every workspace. If a
+        # conversion fails, restore that copy and retain the V2 service/binaries.
+        if [[ $STARTED == 1 && $PREVIOUS_STORAGE_VERSION == 1 ]]; then
+            if ! cp -a /var/lib/asm-todo/data "$BACKUP_DIR/failed-release-v2-data"; then
+                echo 'Cannot preserve V2 state; retaining the V2 release.' >&2
+                systemctl start asm-canary.service || true
+                exit "$exit_code"
+            fi
+            if ! (cd /var/lib/asm-todo && runuser -u asm-todo -- "$REPO_DIR/bin/server" --downgrade); then
+                if ! mv /var/lib/asm-todo/data "$BACKUP_DIR/partial-downgrade-data" || ! cp -a "$BACKUP_DIR/failed-release-v2-data" /var/lib/asm-todo/data; then
+                    echo "Cannot restore V2 state. Service remains stopped; private recovery copy: $BACKUP_DIR/failed-release-v2-data" >&2
+                    exit "$exit_code"
+                fi
+                echo 'Native downgrade failed; restored V2 data and retained the V2 release.' >&2
+                systemctl start asm-canary.service || true
+                if [[ $TIMER_STOPPED == 1 ]]; then systemctl start asm-backup.timer || true; fi
+                exit "$exit_code"
+            fi
+        fi
+        # Preserve live changes made during the brief initial directory migration.
         if [[ $STARTED == 1 && "$LIVE_WORKDIR" != /var/lib/asm-todo ]]; then
             cp -a /var/lib/asm-todo/data "$BACKUP_DIR/failed-release-data"
             mv -- "$LIVE_WORKDIR/data" "$BACKUP_DIR/original-data-at-rollback"

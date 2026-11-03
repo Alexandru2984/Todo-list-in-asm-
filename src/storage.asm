@@ -1,8 +1,10 @@
 %include "src/defs.inc"
 DEFAULT ABS
 extern current_uid, parse_uint, itoa, strlen, write_all, valid_utf8
+extern parse_metadata, format_metadata, validate_metadata_graph
 
 global find_todo, duplicate_todo
+global find_any_todo, split_field, storage_version, save_legacy_snapshot
 global init_storage, load_todos, append_todo, complete_todo, delete_todo
  global edit_todo, get_todo_list, get_todo_count, clear_done_todos
  global lock_user_file, unlock_user_file, reopen_todo
@@ -10,16 +12,22 @@ section .data
     data_dir db 'data',0
     prefix db 'data/todos-',0
     seq_prefix db '#next=',0
+    v2_header db '#asm=2',10
+    v2_header_len equ $-v2_header
     next_id dq 1
     lock_fd dq -1
 section .bss
-    todos resb TASK_MAX*128
-    file_buf resb 262145+8
+    todos resb SLOT_MAX*TASK_SIZE
+    file_buf resb STORAGE_MAX+9
     todo_count resq 1
     todo_path resb 128
     tmp_path resb 136
     lock_path resb 136
-    line_buf resb 256
+    line_buf resb 1024
+    storage_version resq 1
+    sequence_seen resq 1
+    write_legacy resq 1
+    stat_buffer resb 144
 section .text
 init_storage:
     mov eax,SYS_MKDIR
@@ -132,15 +140,18 @@ load_todos:
     push r14
     push r15
     mov rdi,todos
-    mov ecx,TASK_MAX*128
+    mov ecx,SLOT_MAX*TASK_SIZE
     xor eax,eax
     rep stosb
     mov qword [todo_count],0
     mov qword [next_id],1
+    mov qword [storage_version],1
+    mov qword [sequence_seen],0
+    mov qword [write_legacy],0
     call build_path
     mov eax,SYS_OPEN
     mov rdi,todo_path
-    mov esi,O_RDONLY|O_NOFOLLOW|O_CLOEXEC
+    mov esi,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK
     xor edx,edx
     syscall
     cmp rax,-2
@@ -148,12 +159,16 @@ load_todos:
     test rax,rax
     js .bad
     mov rbx,rax
+    mov rdi,rbx
+    call check_regular
+    test rax,rax
+    js .close_bad
     xor r12d,r12d
 .read:
     mov eax,SYS_READ
     mov rdi,rbx
     lea rsi,[file_buf+r12]
-    mov edx,262145
+    mov edx,STORAGE_MAX+1
     sub rdx,r12
     syscall
     cmp rax,-4
@@ -162,7 +177,7 @@ load_todos:
     js .close_bad
     jz .read_done
     add r12,rax
-    cmp r12,262144
+    cmp r12,STORAGE_MAX
     ja .close_bad
     jmp .read
 .read_done:
@@ -190,10 +205,37 @@ load_todos:
 .line:
     mov byte [r15],0
     inc r15
+    cmp dword [r14],'#asm'
+    jne .sequence
+    test r13,r13
+    jnz .bad
+    cmp dword [r14+3],'m=2'
+    jne .bad
+    mov qword [storage_version],2
+    jmp .next
+.sequence:
+    cmp word [r14],'A|'
+    jne .sequence_number
+    cmp qword [storage_version],2
+    jne .bad
+    lea rdi,[r14+2]
+    call parse_metadata
+    test rax,rax
+    js .bad
+    jmp .next
+.sequence_number:
     cmp dword [r14],'#nex'
     jne .fields
     cmp word [r14+4],'t='
     jne .bad
+    cmp qword [storage_version],2
+    jne .read_sequence
+    cmp qword [sequence_seen],0
+    jne .bad
+    cmp r13,7 ; V2 sequence header follows the version header
+    jne .bad
+.read_sequence:
+    mov qword [sequence_seen],1
     lea rdi,[r14+6]
     call parse_uint
     test rax,rax
@@ -267,16 +309,19 @@ load_todos:
     mov [next_id],rax
 .slot:
     mov rdi,todos
-    mov ecx,TASK_MAX
+    mov ecx,SLOT_MAX
 .find_slot:
     cmp [rdi],r8
-    je .update
+    je .existing
     cmp qword [rdi],0
     je .update
-    add rdi,128
+    add rdi,TASK_SIZE
     dec ecx
     jnz .find_slot
     jmp .bad ; legacy overflow must be recovered explicitly, never discarded
+.existing:
+    cmp qword [storage_version],2
+    je .bad ; V2 snapshots cannot contain replay/duplicate records
 .update:
     mov [rdi],r8
     mov [rdi+8],r9b
@@ -293,18 +338,41 @@ load_todos:
     sub r13,file_buf
     jmp .record
 .count:
+    cmp qword [storage_version],2
+    jne .legacy_count
+    cmp qword [sequence_seen],1
+    jne .bad
     mov rdi,todos
-    mov ecx,TASK_MAX
+    call validate_metadata_graph
+    test rax,rax
+    js .bad
+.legacy_count:
+    mov rdi,todos
+    mov ecx,SLOT_MAX
+    xor r8d,r8d
 .count_loop:
     cmp qword [rdi],0
     je .count_next
     cmp byte [rdi+8],2
-    je .count_next
+    jne .live_count
+    cmp qword [storage_version],2
+    jne .drop_legacy
+    inc r8
+    jmp .count_next
+.drop_legacy:
+    ; Legacy tombstones do not carry recoverable trash metadata.
+    mov qword [rdi],0
+    jmp .count_next
+.live_count:
     inc qword [todo_count]
 .count_next:
-    add rdi,128
+    add rdi,TASK_SIZE
     dec ecx
     jnz .count_loop
+    cmp qword [todo_count],TASK_MAX
+    ja .bad
+    cmp r8,200
+    ja .bad
 .ok:
     xor eax,eax
     jmp .done
@@ -371,12 +439,31 @@ save_snapshot:
     mov byte [rdi+4],0
     mov eax,SYS_OPEN
     mov rdi,tmp_path
-    mov esi,O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW|O_CLOEXEC
+    mov esi,O_WRONLY|O_CREAT|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK
     mov edx,0600o
     syscall
     test rax,rax
     js .bad
     mov r12,rax
+    mov rdi,r12
+    call check_regular
+    test rax,rax
+    js .close_bad
+    mov eax,SYS_FTRUNCATE
+    mov rdi,r12
+    xor esi,esi
+    syscall
+    test rax,rax
+    js .close_bad
+    cmp qword [write_legacy],0
+    jne .sequence
+    mov rdi,r12
+    mov rsi,v2_header
+    mov edx,v2_header_len
+    call write_all
+    test rax,rax
+    js .close_bad
+.sequence:
     mov rdi,line_buf
     mov rsi,seq_prefix
     mov ecx,6
@@ -394,12 +481,15 @@ save_snapshot:
     test rax,rax
     js .close_bad
     mov rbx,todos
-    mov r13d,TASK_MAX
+    mov r13d,SLOT_MAX
 .loop:
     cmp qword [rbx],0
     je .next
     cmp byte [rbx+8],2
-    je .next
+    jne .write
+    cmp qword [write_legacy],0
+    jne .next
+.write:
     mov rdi,rbx
     call format_line
     mov rdx,rax
@@ -408,8 +498,19 @@ save_snapshot:
     call write_all
     test rax,rax
     js .close_bad
+    cmp qword [write_legacy],0
+    jne .next
+    mov rdi,rbx
+    mov rsi,line_buf
+    call format_metadata
+    mov rdx,rax
+    mov rdi,r12
+    mov rsi,line_buf
+    call write_all
+    test rax,rax
+    js .close_bad
 .next:
-    add rbx,128
+    add rbx,TASK_SIZE
     dec r13
     jnz .loop
     mov eax,SYS_FSYNC
@@ -459,6 +560,34 @@ save_snapshot:
     pop rbx
     ret
 
+; fstat the opened inode before reading or truncating it. A concurrently
+; replaced snapshot can have nlink=0; linked aliases and special files fail.
+check_regular:
+    mov eax,SYS_FSTAT
+    mov rsi,stat_buffer
+    syscall
+    test rax,rax
+    js .done
+    mov eax,[stat_buffer+24]
+    and eax,0170000o
+    cmp eax,0100000o
+    jne .bad
+    cmp qword [stat_buffer+16],1
+    ja .bad
+    xor eax,eax
+    ret
+.bad:
+    mov rax,-1
+.done:
+    ret
+
+; Maintenance-only: caller has stopped the HTTP service and holds the file lock.
+save_legacy_snapshot:
+    mov qword [write_legacy],1
+    call save_snapshot
+    mov qword [write_legacy],0
+    ret
+
 append_todo:
     push rbx
     mov rbx,rdi
@@ -468,17 +597,21 @@ append_todo:
     cmp [next_id],rax
     jae .full
     mov r8,todos
-    mov ecx,TASK_MAX
+    mov ecx,SLOT_MAX
 .find:
     cmp qword [r8],0
     je .found
-    cmp byte [r8+8],2
-    je .found
-    add r8,128
+    add r8,TASK_SIZE
     dec ecx
     jnz .find
     jmp .full
 .found:
+    push r8
+    mov rdi,r8
+    xor eax,eax
+    mov ecx,TASK_SIZE/8
+    rep stosq
+    pop r8
     mov rax,[next_id]
     mov [r8],rax
     inc qword [next_id]
@@ -506,20 +639,32 @@ append_todo:
 find_todo:
     test rdi,rdi
     jz .missing
+    call find_any_todo
+    test rax,rax
+    jz .missing
+    cmp byte [rax+8],2
+    je .missing
+    ret
+.missing:
+    xor eax,eax
+    ret
+
+; ID zero exposes the array base to the bounded native graph walker.
+find_any_todo:
     mov rax,todos
-    mov ecx,TASK_MAX
+    test rdi,rdi
+    jz .found
+    mov ecx,SLOT_MAX
 .loop:
     cmp [rax],rdi
     je .found
-    add rax,128
+    add rax,TASK_SIZE
     dec ecx
     jnz .loop
 .missing:
     xor eax,eax
     ret
 .found:
-    cmp byte [rax+8],2
-    je .missing
     ret
 
 complete_todo:
@@ -527,19 +672,30 @@ complete_todo:
     test rax,rax
     jz missing_todo
     mov byte [rax+8],1
+    push rax
+    mov eax,SYS_TIME
+    xor edi,edi
+    syscall
+    pop rdx
+    cmp qword [rdx+T_COMPLETED],0
+    jne .saved_time
+    mov [rdx+T_COMPLETED],rax
+.saved_time:
     jmp save_snapshot
 reopen_todo:
     call find_todo
     test rax,rax
     jz missing_todo
     mov byte [rax+8],0
+    mov qword [rax+T_COMPLETED],0
     jmp save_snapshot
 delete_todo:
     call find_todo
     test rax,rax
     jz missing_todo
-    mov byte [rax+8],2
-    jmp save_snapshot
+    mov rdi,rax
+    call trash_slot
+    jmp commit_trash
 edit_todo:
     push rsi
     call find_todo
@@ -557,17 +713,126 @@ missing_todo:
     mov rax,-404
     ret
 clear_done_todos:
-    mov rdi,todos
-    mov ecx,TASK_MAX
+    push rbx
+    push r12
+    mov rbx,todos
+    mov r12d,SLOT_MAX
 .loop:
-    cmp byte [rdi+8],1
+    cmp qword [rbx],0
+    je .next
+    cmp byte [rbx+8],1
     jne .next
-    mov byte [rdi+8],2
+    mov rdi,rbx
+    call trash_slot
 .next:
-    add rdi,128
-    dec ecx
+    add rbx,TASK_SIZE
+    dec r12
     jnz .loop
-    jmp save_snapshot
+    pop r12
+    pop rbx
+    jmp commit_trash
+
+trash_slot:
+    movzx eax,byte [rdi+8]
+    mov [rdi+T_PREVIOUS],rax
+    mov byte [rdi+8],2
+    push rdi
+    mov eax,SYS_TIME
+    xor edi,edi
+    syscall
+    pop rdi
+    mov [rdi+T_DELETED],rax
+    ret
+
+; Retain the latest 200 trash entries. A removed task cannot leave dangling
+; references. Parent deletion includes descendants, without recursive mutation.
+commit_trash:
+    push rbx
+    push r12
+    push r13
+.descendants:
+    xor r13d,r13d
+    mov rbx,todos
+    mov r12d,SLOT_MAX
+.scan_child:
+    cmp qword [rbx],0
+    je .next_child
+    cmp byte [rbx+8],2
+    je .next_child
+    mov rdi,[rbx+T_PARENT]
+    test rdi,rdi
+    jz .next_child
+    call find_any_todo
+    test rax,rax
+    jz .next_child
+    cmp byte [rax+8],2
+    jne .next_child
+    mov rdi,rbx
+    call trash_slot
+    inc r13
+.next_child:
+    add rbx,TASK_SIZE
+    dec r12
+    jnz .scan_child
+    test r13,r13
+    jnz .descendants
+.prune:
+    xor r8d,r8d
+    xor r9d,r9d ; oldest slot
+    mov rbx,todos
+    mov ecx,SLOT_MAX
+.oldest:
+    cmp qword [rbx],0
+    je .next_oldest
+    cmp byte [rbx+8],2
+    jne .next_oldest
+    inc r8
+    test r9,r9
+    jz .choose
+    mov rax,[r9+T_DELETED]
+    cmp [rbx+T_DELETED],rax
+    jae .next_oldest
+.choose:
+    mov r9,rbx
+.next_oldest:
+    add rbx,TASK_SIZE
+    dec ecx
+    jnz .oldest
+    cmp r8,200
+    jbe .save
+    mov r10,[r9]
+    mov qword [r9],0
+    mov rbx,todos
+    mov ecx,SLOT_MAX
+.detach:
+    cmp [rbx+T_PARENT],r10
+    jne .deps
+    mov qword [rbx+T_PARENT],0
+.deps:
+    xor r8d,r8d
+    xor r9d,r9d
+.dep:
+    cmp r8,[rbx+T_DEP_COUNT]
+    jae .dep_end
+    mov rax,[rbx+T_DEPS+r8*8]
+    inc r8
+    cmp rax,r10
+    je .dep
+    mov [rbx+T_DEPS+r9*8],rax
+    inc r9
+    jmp .dep
+.dep_end:
+    mov [rbx+T_DEP_COUNT],r9
+    add rbx,TASK_SIZE
+    dec ecx
+    jnz .detach
+    jmp .prune
+.save:
+    call save_snapshot
+    pop r13
+    pop r12
+    pop rbx
+    ret
 get_todo_list:
     mov rax,todos
     ret

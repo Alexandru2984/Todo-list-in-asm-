@@ -2,12 +2,18 @@
 DEFAULT ABS
 extern init_storage, parse_uint, validate_request, handle_request, send_error
 extern print, itoa
+extern strcmp, downgrade_storage
 
 global _start
 section .data
     starting db 'ASM TODO listening on 127.0.0.1:',0
     newline db 10,0
     failure db 'ASM TODO: startup failed (storage, port or socket)',10,0
+    version_arg db '--storage-version',0
+    version_text db '2',10,0
+    downgrade_arg db '--downgrade',0
+    downgrade_ok db 'ASM TODO: offline downgrade completed',10,0
+    downgrade_bad db 'ASM TODO: offline downgrade failed; retain the V2 binary and restore the private copy',10,0
     sockaddr: dw AF_INET,0
               dd 0x0100007f
               dq 0
@@ -23,6 +29,16 @@ _start:
     je .signals
     cmp qword [rsp], 2
     jne .fatal
+    mov rdi, [rsp+16]
+    mov rsi,version_arg
+    call strcmp
+    test rax,rax
+    jz .version
+    mov rdi, [rsp+16]
+    mov rsi,downgrade_arg
+    call strcmp
+    test rax,rax
+    jz .downgrade
     mov rdi, [rsp+16]
     call parse_uint
     test rax, rax
@@ -180,4 +196,27 @@ _start:
     call print
     mov eax,SYS_EXIT
     mov edi,1
+    syscall
+
+.downgrade:
+    call downgrade_storage
+    test rax,rax
+    js .downgrade_failed
+    mov rdi,downgrade_ok
+    call print
+    mov eax,SYS_EXIT
+    xor edi,edi
+    syscall
+.downgrade_failed:
+    mov rdi,downgrade_bad
+    call print
+    mov eax,SYS_EXIT
+    mov edi,1
+    syscall
+
+.version:
+    mov rdi,version_text
+    call print
+    mov eax,SYS_EXIT
+    xor edi,edi
     syscall

@@ -418,7 +418,7 @@ build_view:
 .scan_start:
     call get_todo_list
     mov rbx,rax
-    mov r12d,TASK_MAX
+    mov r12d,SLOT_MAX
 .scan:
     cmp qword [rbx],0
     je .next
@@ -445,7 +445,7 @@ build_view:
     mov [view_rows+rax*8],rbx
     inc qword [view_count]
 .next:
-    add rbx,128
+    add rbx,TASK_SIZE
     dec r12
     jnz .scan
     mov rax,[view_total]

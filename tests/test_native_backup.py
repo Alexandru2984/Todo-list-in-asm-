@@ -47,7 +47,7 @@ class NativeBackupTests(unittest.TestCase):
     def test_sha256_standard_and_boundary_vectors(self):
         rng = random.Random(6234)
         payloads = [b'',b'abc',b'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq']
-        payloads += [rng.randbytes(size) for size in [1,55,56,63,64,65,119,120,127,128,129,4096,262144]]
+        payloads += [rng.randbytes(size) for size in [1,55,56,63,64,65,119,120,127,128,129,4096,262144,2097152]]
         path = self.root/'vector'
         for data in payloads:
             with self.subTest(length=len(data)):
@@ -80,6 +80,15 @@ class NativeBackupTests(unittest.TestCase):
         self.assertIn('RW ',stack)
         self.assertNotIn('RWE',stack)
 
+    def test_planner_size_boundary_survives_archive_and_independent_hash(self):
+        contents = b'V2 boundary\n' + b'x'*(2097152-len(b'V2 boundary\n'))
+        (self.data/self.name).write_bytes(contents)
+        archive = self.create()
+        self.assertEqual(self.run_backup('--verify',archive).returncode,0)
+        with tarfile.open(archive) as reader:
+            self.assertEqual(reader.extractfile(self.name).read(),contents)
+            self.assertIn(hashlib.sha256(contents).hexdigest().encode(),reader.extractfile('SHA256SUMS').read())
+
     def test_empty_archive_and_multiple_snapshots(self):
         first = self.create(); second = self.create()
         self.assertNotEqual(first,second)
@@ -96,7 +105,7 @@ class NativeBackupTests(unittest.TestCase):
                 if kind=='symlink': path.symlink_to(outside)
                 elif kind=='hardlink': os.link(outside,path)
                 elif kind=='fifo': os.mkfifo(path)
-                else: path.write_bytes(b'x'*262145)
+                else: path.write_bytes(b'x'*2097153)
                 result = self.run_backup(self.data,self.out)
                 self.assertNotEqual(result.returncode,0)
                 self.assertEqual(list(self.out.glob('*.tar')),[])

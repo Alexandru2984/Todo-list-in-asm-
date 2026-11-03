@@ -8,9 +8,9 @@ commit without assistant/coauthor credits.
 
 ## Delivery stages and acceptance
 
-- [ ] CI: inspect actual GitHub failures with gh, repair the root cause, push a
+- [x] CI: inspect actual GitHub failures with gh, repair the root cause, push a
   concrete tested fix and observe a successful remote run. Keep axe checks active.
-- [ ] V2 storage: read legacy records unchanged, version new snapshots, preserve
+- [x] V2 storage: read legacy records unchanged, version new snapshots, preserve
   native backup compatibility, add a native downgrade command and test rollback.
 - [ ] Priorities/dates: low/normal/high/urgent, strict ISO dates, Today/Upcoming/
   Overdue views, priority/due sorts, completion timestamps and native forms.
@@ -86,3 +86,11 @@ format oracles and verified downgrade/backup drills. No new vendor is introduced
 Existing IR/backup runbooks remain applicable. Off-host copies, global disk quotas
 and external alert delivery remain operator work; no monetary/regulatory impact
 or compliance guarantee is inferred from this repository.
+
+## Verified checkpoints
+
+- CI contrast fix: GitHub Actions run 41716185000 passed both jobs.
+- V2 foundation: protocol/storage/view/export suite passed; native backup suite
+  passed including the 2 MiB boundary; all 16 desktop/mobile/no-JavaScript/axe
+  browser cases passed. Offline downgrade and corruption preflight use isolated
+  workspaces. Production rollout remains the final delivery stage.

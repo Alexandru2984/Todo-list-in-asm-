@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import os
 from pathlib import Path
 import re
@@ -52,7 +53,8 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.post('/complete', {'id': '1'})[0], 303)
         self.assertEqual(self.post('/clear-done', {})[0], 303)
         stored = self.server.file(self.cookie).read_text()
-        self.assertNotIn('|done\n', stored)
+        tasks = json.loads(self.server.request('GET', '/export.json', cookie=self.cookie)[2])['tasks']
+        self.assertEqual([task['title'] for task in tasks], ['active'])
         self.assertIn('|active\n', stored)
 
     def test_isolation_and_no_capability_in_html(self):
@@ -218,9 +220,9 @@ class SecurityTests(unittest.TestCase):
             return self.post('/add', {'title': f'parallel {i}'})[0]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             self.assertEqual(list(pool.map(add, range(40))), [303]*40)
-        records = self.server.file(self.cookie).read_text().splitlines()[1:]
+        records = json.loads(self.server.request('GET', '/export.json', cookie=self.cookie)[2])['tasks']
         self.assertEqual(len(records), 40)
-        self.assertEqual(len({line.split('|')[0] for line in records}), 40)
+        self.assertEqual(len({task['id'] for task in records}), 40)
 
     def test_survives_restart_and_private_permissions(self):
         self.add('persistent')

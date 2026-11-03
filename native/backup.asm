@@ -9,7 +9,7 @@ global _start
 %define OPENAT 257
 %define UNLINKAT 263
 %define RENAMEAT2 316
-%define FILE_MAX 262144
+%define FILE_MAX STORAGE_MAX
 %define MANIFEST_MAX 16777216
 %define RECORD_MAX 100000
 %define RECORD_LEN 109 ; 64 hex, two spaces, 42 filename bytes, LF

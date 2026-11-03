@@ -80,7 +80,7 @@ export_json:
     call get_todo_list
     mov rbx,rax
     pop rdi
-    mov r13d,TASK_MAX
+    mov r13d,SLOT_MAX
     xor r14d,r14d
 .loop:
     cmp qword [rbx],0
@@ -121,7 +121,7 @@ export_json:
     mov byte [rdi],'}'
     inc rdi
 .next:
-    add rbx,128
+    add rbx,TASK_SIZE
     dec r13
     jnz .loop
     mov word [rdi],']}'
@@ -253,7 +253,7 @@ export_csv:
     call get_todo_list
     mov rbx,rax
     pop rdi
-    mov r13d,TASK_MAX
+    mov r13d,SLOT_MAX
 .loop:
     cmp qword [rbx],0
     je .next
@@ -296,7 +296,7 @@ export_csv:
     mov word [rdi+1],0x0a0d
     add rdi,3
 .next:
-    add rbx,128
+    add rbx,TASK_SIZE
     dec r13
     jnz .loop
     mov rax,rdi
