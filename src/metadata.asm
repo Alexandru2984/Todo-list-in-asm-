@@ -2,6 +2,7 @@
 DEFAULT ABS
 extern parse_uint, valid_utf8, itoa, split_field, find_any_todo
 
+global copy_metadata_text
 global parse_metadata, format_metadata, validate_metadata_graph
 section .data
     ; On disk: A|id|priority|due|completed|parent|repeat|project|tags|deps|

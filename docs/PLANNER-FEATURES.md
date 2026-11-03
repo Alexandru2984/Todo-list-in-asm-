@@ -27,7 +27,9 @@ tasks retain unknown completion times. Repeating completion is idempotent.
 JSON now has `version: 2`, `exportedAt`, a live `tasks` array and a separate `trash`
 array. Each task retains the V1 ID/title/completed/createdAt fields and adds
 priority, dueDate, completedAt, project, tags, parentId, dependencies, recurrence,
-recurrenceAnchor, stage, deletedAt and previousCompleted. IDs remain strings to
+recurrenceAnchor, stage, workflowStage, deletedAt and previousCompleted. The stage
+field describes the visible todo/doing/done state; workflowStage preserves the
+underlying todo/doing choice when a completed task is reopened. IDs remain strings to
 avoid JavaScript's 53-bit integer limit. Unknown optional dates are JSON null;
 projects and tags are bounded strings. Tags are editable in native task details.
 
@@ -36,8 +38,9 @@ CSV keeps the original first four columns and adds the metadata columns plus
 IDs use a quoted comma-separated field; missing parent is zero. When a title,
 project or tag string could execute as a spreadsheet formula, export prefixes an
 apostrophe. Bits 1, 2 and 4 of escapeFlags identify exactly which of these fields
-received that added apostrophe. A future native importer can therefore remove
-one added prefix without corrupting an original leading apostrophe. CSV does not
+received that added apostrophe. The native importer removes exactly one added
+prefix without corrupting an original leading apostrophe. workflowStage is the
+last CSV column and preserves the underlying workflow state. CSV does not
 contain the workspace capability key. Treat all exports as private task data.
 
 ## Recurrence
@@ -151,3 +154,27 @@ request requires its own workspace cookie, sends no-store/noindex and discloses
 no task titles or access key. GET/calendar/chart requests never rewrite data.
 Legacy completed tasks do not invent activity; new completion actions increment
 one bucket. Undo/redo swaps the activity buckets with the task snapshot.
+
+## Import
+
+Open **Import tasks**, paste a native JSON/CSV export, select Merge or Replace,
+then preview and explicitly confirm. This works without JavaScript. Preview
+validates the entire document and shows at most 20 sample entries; it never writes
+workspace data. Confirmation reparses the source and validates capacity and links
+against the current workspace while holding its write lock. Both operations use
+one atomic snapshot and can be undone as one change.
+
+Merge preserves existing tasks and assigns fresh monotonically increasing IDs to
+all imported live/trash records. Replace replaces both live tasks and trash, also
+with fresh IDs; an empty replacement clears both. Parents/dependencies are
+remapped only within the imported document: a missing source reference cannot
+attach to an unrelated existing task. Imports preserve task metadata and retained
+trash, but do not import another workspace's action history, undo or daily metrics.
+
+Limits are 2 MiB of decoded source, 1,000 live tasks, 200 retained trash entries
+and the normal field/relationship bounds. JSON v1/v2 and CSV v1/extended exports
+are supported. Unknown or duplicate fields, invalid encodings, numeric overflow,
+cycles and dangling links fail without a write. Unknown creation dates remain
+unknown. CSV supports BOM, LF/CRLF, reordered columns and quoted/doubled quotes.
+Legacy CSV without escapeFlags retains leading apostrophes because the original
+value cannot be recovered unambiguously. See [the import contract](IMPORT.md).

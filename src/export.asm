@@ -15,7 +15,7 @@ section .data
     lit_true db 'true',0
     lit_false db 'false',0
     lit_null db 'null',0
-    csv_header db 0xef,0xbb,0xbf,'"id","title","completed","createdAt","priority","dueDate","completedAt","project","tags","parentId","dependencies","recurrence","recurrenceAnchor","stage","deletedAt","previousCompleted","escapeFlags"',13,10,0
+    csv_header db 0xef,0xbb,0xbf,'"id","title","completed","createdAt","priority","dueDate","completedAt","project","tags","parentId","dependencies","recurrence","recurrenceAnchor","stage","deletedAt","previousCompleted","escapeFlags","workflowStage"',13,10,0
 section .bss
     stamp resb 24
     decimal resb 24

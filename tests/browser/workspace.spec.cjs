@@ -390,3 +390,53 @@ for (const layout of ['board', 'calendar']) {
     await page.screenshot({ path: info.outputPath(`${layout}-dark.png`), fullPage: true });
   });
 }
+
+
+test('native import preview, merge, replace and undo work without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    await add(native, 'Keep existing task');
+    const payload = JSON.stringify({ version: 1, tasks: [{ id: '999', title: 'Imported Ședință 😀 <script>bad</script>', completed: false, createdAt: null }] });
+    await native.locator('#import-panel > summary').click();
+    await native.getByRole('textbox', { name: 'JSON or CSV payload', exact: true }).fill(payload);
+    await native.getByRole('button', { name: 'Preview import', exact: true }).click();
+    await expect(native.getByRole('heading', { name: 'Review your import' })).toBeVisible();
+    await expect(native.getByRole('textbox', { name: 'Reviewed payload', exact: true })).toHaveValue(payload);
+    await expect(native.locator('[data-import-live]')).toHaveText('1');
+    for (const width of [320, 390, 768, 1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+    await native.setViewportSize(page.viewportSize());
+    await native.screenshot({ path: info.outputPath('import-preview.png'), fullPage: true });
+    await native.getByRole('button', { name: 'Confirm import', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(2);
+    await expect(native.locator('.task-title').filter({ hasText: 'Imported Ședință' })).toHaveText('Imported Ședință 😀 <script>bad</script>');
+    await native.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await expect(native.locator('.task-title')).toHaveText('Keep existing task');
+    await native.locator('#import-panel > summary').click();
+    await native.getByRole('combobox', { name: 'Import mode', exact: true }).selectOption('replace');
+    await native.getByRole('textbox', { name: 'JSON or CSV payload', exact: true }).fill(payload);
+    await native.getByRole('button', { name: 'Preview import', exact: true }).click();
+    await native.getByRole('button', { name: 'Confirm import', exact: true }).click();
+    await expect(native.locator('#task-list > li')).toHaveCount(1);
+    await expect(native.locator('.task-title')).toContainText('Imported Ședință');
+  } finally { await context.close(); }
+});
+
+test('native import form and preview meet automated WCAG checks in both themes', async ({ page }) => {
+  await open(page);
+  await page.locator('#import-panel > summary').click();
+  let result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(result.violations).toEqual([]);
+  await page.getByRole('textbox', { name: 'JSON or CSV payload', exact: true }).fill(JSON.stringify({ version: 1, tasks: [{ id: '1', title: 'Accessible import', completed: false, createdAt: null }] }));
+  await page.getByRole('button', { name: 'Preview import', exact: true }).click();
+  result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(result.violations).toEqual([]);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(result.violations).toEqual([]);
+});

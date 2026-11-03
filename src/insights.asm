@@ -7,7 +7,9 @@ section .data
     panel_open db '<section class="insights-panel" aria-labelledby="insights-heading"><h2 id="insights-heading">Your momentum</h2><div class="insight-grid"><div><strong data-insight="week">',0
     week_close db '</strong><span>Completed in 7 days</span></div><div><strong data-insight="month">',0
     month_close db '</strong><span>Completed in 30 days</span></div><div><strong data-insight="streak">',0
-    streak_close db '</strong><span>Current streak · days</span></div></div><img class="activity-chart" src="/stats.svg" width="620" height="150" alt="Daily task completions over the last thirty UTC days"><p class="query-hint">Workspace activity in UTC. Undo reverses its completion count; reopening keeps past activity. A streak can end today or yesterday.</p></section>',0
+    streak_close db '</strong><span>Current streak · days</span></div></div>',0
+    empty_activity db '<p class="query-hint">Complete your first task to start a private activity chart. Dates and streaks use UTC.</p></section>',0
+    chart_close db '<img class="activity-chart" src="/stats.svg" width="620" height="150" alt="Daily task completions over the last thirty UTC days"><p class="query-hint">Workspace activity in UTC. Undo reverses its completion count; reopening keeps past activity. A streak can end today or yesterday.</p></section>',0
     svg_open db '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 150" role="img" aria-labelledby="chart-title"><title id="chart-title">Task completions over thirty UTC days</title><path d="M5 131H615" stroke="#729254"/><g fill="#729254">',0
     rect_open db '<rect x="',0
     rect_y db '" y="',0
@@ -112,6 +114,12 @@ render_insights:
     mov rax,[current_streak]
     call emit_number
     mov rsi,streak_close
+    call copy_string
+    mov rsi,empty_activity
+    cmp qword [total_month],0
+    je .emit
+    mov rsi,chart_close
+.emit:
     jmp copy_string
 
 export_stats_svg:

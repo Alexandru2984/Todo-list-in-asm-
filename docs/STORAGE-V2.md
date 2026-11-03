@@ -27,7 +27,8 @@ native backup members are capped at 2 MiB. Due dates are UTC midnight. Completio
 times are captured on new completions; legacy completion times stay unknown.
 
 Legacy V1 replay files remain readable. A GET never migrates or rewrites data.
-The next successful mutation writes V2 atomically. Native deletion retains a
+The next successful mutation writes revision 3 atomically, retaining the V2
+base/metadata representation. Native deletion retains a
 bounded trash entry and includes descendants; oldest trash beyond 200 entries is
 removed and references are detached. Trash restoration, undo and activity now use the backward-compatible
 [revision 3 extension](STORAGE-HISTORY.md).
@@ -36,12 +37,24 @@ Every opened data/temporary inode must be regular and have at most one link.
 Checks precede reads or truncation; O_NOFOLLOW and O_NONBLOCK prevent symlink and
 FIFO attacks. Temporary writes, fsync, rename and directory fsync remain checked.
 The service allowlist adds only fstat and ftruncate for these checks. The response
-buffer grows to 4 MiB as planner metadata becomes visible. The service memory
-ceiling is 256 MiB (160 MiB high watermark): 24 simultaneous workers may each
-touch a 2 MiB source buffer, a 0.6 MiB task array and a 4 MiB response buffer, plus
-process overhead. The ordinary HTTP request cap remains 4 KiB. Worst-case escaped
-metadata rendering has a dedicated capacity test; the cap is not a request limit.
+buffer is 8 MiB to cover escaped import previews; ordinary worst-case task
+rendering stays below 4 MiB. The service ceiling is 256 MiB (160 MiB high
+watermark), with at most 24 proxy connections and 32 service tasks. Ordinary HTTP
+requests and all headers retain the 4095-byte cap. Only two exact authenticated
+import paths may receive up to 7 MiB of form-encoded request, decoded to at most
+2 MiB. A global native lock and nginx connection zone allow only one large
+import at a time, limiting pages touched in those larger buffers. Bounded render,
+wire/decoded limits, concurrent import rejection and the service sandbox have
+separate integration checks. See [the import contract](IMPORT.md).
 
+
+## Read-only preflight
+
+`--check-storage`, run from the service working directory as the data owner,
+validates every exact workspace filename without rewriting any file. Deployment
+runs this with traffic stopped before replacing binaries. It prints a generic
+result without workspace keys or task content. This is also the first pass of
+the offline converter.
 
 ## Offline downgrade
 

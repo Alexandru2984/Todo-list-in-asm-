@@ -8,6 +8,8 @@ extern history_reset, history_parse, history_validate, history_write, undo_todos
 extern history_prepare, history_complete
 extern task_ready
 
+global check_regular
+global next_id
 global todos, todo_count, lookup_array, save_snapshot, format_line, line_buf
 global find_todo, duplicate_todo
 global find_any_todo, split_field, storage_version, save_legacy_snapshot

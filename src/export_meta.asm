@@ -15,6 +15,7 @@ section .data
     p_repeat db ',"recurrence":',0
     p_anchor db ',"recurrenceAnchor":',0
     p_stage db ',"stage":',0
+    p_workflow db ',"workflowStage":',0
     p_deleted db ',"deletedAt":',0
     p_previous db ',"previousCompleted":',0
     none db 'none',0
@@ -137,6 +138,11 @@ export_json_metadata:
     jne .stage
     mov eax,2
 .stage:
+    mov rsi,[stages+rax*8]
+    call json_string
+    mov rsi,p_workflow
+    call copy_string
+    mov rax,[rbx+T_STAGE]
     mov rsi,[stages+rax*8]
     call json_string
     mov rsi,p_deleted
@@ -265,6 +271,9 @@ export_csv_metadata:
     or r13,rax
     mov rax,r13
     call csv_number
+    mov rax,[rbx+T_STAGE]
+    mov rsi,[stages+rax*8]
+    call csv_field
     pop r13
     pop r12
     pop rbx

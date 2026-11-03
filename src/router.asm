@@ -7,6 +7,9 @@ extern request_method, request_path, request_body
 extern request_cookie, request_origin, request_host, request_site
 
 global handle_request, current_uid, send_error, copy_string, html_escape, emit_number
+extern handle_import, is_import_path
+global redirect_app
+global authorize_import_headers, send_private_html, res_buf
 global decode_value, decode_buf, decode_stripped
 extern parse_view, build_view, render_template, view_rows, view_count, format_utc
 extern duplicate_todo
@@ -151,7 +154,7 @@ section .data
     error_411 db 'Content-Length is required.',10
     error_411_len equ $-error_411
     status_413 db 'HTTP/1.1 413 Content Too Large',13,10,0
-    error_413 db 'The request exceeds the 4095-byte limit.',10
+    error_413 db 'Ordinary requests allow 4095 bytes. Imports allow 7 MiB encoded requests and 2 MiB decoded payloads.',10
     error_413_len equ $-error_413
     status_415 db 'HTTP/1.1 415 Unsupported Media Type',13,10,0
     error_415 db 'Use application/x-www-form-urlencoded.',10
@@ -160,7 +163,7 @@ section .data
     error_417 db 'Expect headers are not supported.',10
     error_417_len equ $-error_417
     status_422 db 'HTTP/1.1 422 Unprocessable Content',13,10,0
-    error_422 db 'Enter a task between 1 and 110 UTF-8 bytes.',10
+    error_422 db 'Check the title or import fields. Titles require 1 to 110 UTF-8 bytes; imports must match the supported JSON or CSV schema.',10
     error_422_len equ $-error_422
     status_500 db 'HTTP/1.1 500 Internal Server Error',13,10,0
     error_500 db 'Stored data could not be read safely. Please contact the operator.',10
@@ -840,6 +843,10 @@ handle_request:
     test rax,rax
     jz .method
     mov rdi,request_path
+    call is_import_path
+    test rax,rax
+    jnz .method
+    mov rdi,request_path
     mov rsi,stats_path
     call strcmp
     test rax,rax
@@ -995,6 +1002,10 @@ handle_request:
     call check_origin
     test rax,rax
     js .error
+    mov rdi,request_path
+    call is_import_path
+    test rax,rax
+    jnz .post_import
     call parse_form
     test rax,rax
     js .error
@@ -1241,6 +1252,17 @@ handle_request:
     js .unlock_error
     call unlock_user_file
     call redirect_app
+    jmp .done
+.post_import:
+    cmp byte [current_uid],0
+    je .unauthorized
+    mov rdi,r12
+    xor esi,esi
+    cmp byte [request_path+7],0 ; /import is seven bytes, preview is longer
+    sete sil
+    call handle_import
+    test rax,rax
+    js .error
     jmp .done
 .post_start_work:
     mov r13d,1
@@ -1836,3 +1858,36 @@ normalize_board_path:
     pop r12
     pop rbx
     ret
+
+section .text
+; Header-only authorization for the import receive gate. It performs no writes.
+authorize_import_headers:
+    call parse_cookie
+    test rax,rax
+    js .done
+    cmp byte [current_uid],0
+    je .unauthorized
+    call check_origin
+.done:
+    ret
+.unauthorized:
+    mov rax,-401
+    ret
+
+; fd/body/length plus numeric 200/409/507 status for a bounded native preview.
+send_private_html:
+    cmp rcx,409
+    je .conflict
+    cmp rcx,507
+    je .storage
+    mov rcx,ok
+    jmp .send
+.conflict:
+    mov rcx,status_409
+    jmp .send
+.storage:
+    mov rcx,status_507
+.send:
+    mov r8,mime_html
+    mov r9,private_headers
+    jmp respond

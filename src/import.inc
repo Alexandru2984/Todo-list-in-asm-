@@ -1,0 +1,15 @@
+%ifndef ASM_IMPORT_INC
+%define ASM_IMPORT_INC
+%define JSON_STRING 256
+%define JSON_NUMBER 257
+%define JSON_TRUE   258
+%define JSON_FALSE  259
+%define JSON_NULL   260
+%define IMPORT_MAX  2097152
+%define IMPORT_REQUEST_MAX 7340031
+%define I_STAGE 416
+%define I_FIELDS 424
+%define I_NEWID 432
+%define I_ESCAPE 440
+%define I_TRASH 448
+%endif

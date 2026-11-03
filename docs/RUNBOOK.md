@@ -132,3 +132,18 @@ isolated storage and probed successfully. A staffed
 incident-response exercise and legal notification assessment
 have not been performed. Assess applicable obligations with the operator; the repo
 does not establish regulatory scope or a notification deadline.
+
+## Planner storage preflight
+
+With the service stopped, validate all workspace files without rewriting them:
+
+```sh
+sudo -u asm-todo sh -c 'cd /var/lib/asm-todo && /srv/canary/asm.micutu.com/app/bin/server --check-storage'
+```
+
+Current snapshots are revision 3. Never copy a previous binary over live planner
+state without comparing --storage-version. The deployment script preserves a
+complete private recovery copy and uses the new native --downgrade converter
+before an older reader starts. Conversion retains V1 live fields; metadata,
+trash/history remain in that private copy. See [the rollback contract](STORAGE-HISTORY.md).
+Native backup retention does not prune these operator-managed release copies.

@@ -104,6 +104,9 @@ TIMER_STOPPED=1
 systemctl stop asm-canary.service
 STOPPED=1
 cp -a "$LIVE_WORKDIR/data" "$BACKUP_DIR/data"
+# Validate every existing workspace while traffic is stopped, before replacing
+# binaries or changing ownership. The native command never rewrites a file.
+(cd "$LIVE_WORKDIR" && "$REPO_DIR/build/server" --check-storage)
 install -d -m 0700 -o asm-todo -g asm-todo /var/lib/asm-todo
 if [[ "$LIVE_WORKDIR" != /var/lib/asm-todo ]]; then
     if [[ -e /var/lib/asm-todo/data ]]; then mv -- /var/lib/asm-todo/data "$BACKUP_DIR/previous-state-data"; fi

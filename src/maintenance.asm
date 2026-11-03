@@ -3,16 +3,23 @@ DEFAULT ABS
 extern current_uid, load_todos, lock_user_file, unlock_user_file
 extern storage_version, save_legacy_snapshot
 
-global downgrade_storage
+global downgrade_storage, check_storage
 section .data
     directory db 'data',0
+    write_mode dq 0
 section .bss
     entries resb 32768
 section .text
 ; Offline maintenance only. Two directory passes validate every source before
 ; rewriting any file. Caller must stop HTTP traffic and preserve a private copy.
 ; No contents or capability filenames are printed by the converter.
+check_storage:
+    xor edi,edi
+    jmp maintenance_run
 downgrade_storage:
+    mov edi,1
+maintenance_run:
+    mov [write_mode],rdi
     push rbx
     push r12
     push r13
@@ -88,9 +95,12 @@ downgrade_storage:
     jb .entry
     jmp .read
 .end_pass:
+    cmp qword [write_mode],0
+    je .success
     inc r13
     cmp r13,2
     jb .pass
+.success:
     mov eax,SYS_CLOSE
     mov rdi,r12
     syscall

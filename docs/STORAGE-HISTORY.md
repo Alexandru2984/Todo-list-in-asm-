@@ -38,8 +38,10 @@ swap these buckets. Reopen/trash do not erase a historical completion.
 One stable file lock and checked write/fsync/rename/directory-fsync cover current
 state, previous state, activity and metrics. A failed write never publishes only
 half a recurrence or undo. The existing 2 MiB storage/native-backup member cap
-covers both task arrays. The 4 MiB response buffer and 256 MiB service envelope
-also account for the extra 0.6 MiB undo array per active worker.
+covers both task arrays. The 256 MiB service envelope includes the extra 0.6 MiB
+undo array per active worker. The response buffer is now 8 MiB for escaped import
+previews; ordinary rendering stays below 4 MiB. Large import reception is globally
+serialized and keeps the ordinary request/header limits intact.
 
 ## Trash semantics and privacy
 

@@ -1,9 +1,13 @@
 %include "src/defs.inc"
+%include "src/import.inc"
 DEFAULT ABS
 
+extern is_import_path, import_acquire, authorize_import_headers
+global request_cap
 global validate_request, request_method, request_path, request_body
  global request_cookie, request_origin, request_host, request_site
 section .data
+    request_cap dq REQUEST_MAX
     h_cl db 'content-length',0
     h_te db 'transfer-encoding',0
     h_host db 'host',0
@@ -14,6 +18,7 @@ section .data
     h_expect db 'expect',0
     form_type db 'application/x-www-form-urlencoded',0
 section .bss
+    request_import resq 1
     request_method resq 1 ; 1 GET, 2 POST, 3 HEAD, 4 other
     request_path resb PATH_MAX
     request_body resq 1
@@ -129,6 +134,10 @@ validate_request:
     jmp .incomplete
 .headers_found:
     lea r13,[rbx+rdx+4]
+    mov rax,r13
+    sub rax,rbx
+    cmp rax,REQUEST_MAX
+    ja .large
     mov qword [header_flags],0
     mov qword [body_length],0
     mov byte [request_host],0
@@ -207,6 +216,13 @@ validate_request:
     jmp .target_loop
 .version:
     mov byte [request_path+rcx],0
+    mov qword [request_import],0
+    cmp qword [request_method],2
+    jne .http_version
+    mov rdi,request_path
+    call is_import_path
+    mov [request_import],rax
+.http_version:
     mov rax,r15
     sub rax,r14
     cmp rax,8
@@ -332,8 +348,15 @@ validate_request:
     ja .bad
     imul rax,10
     add rax,rcx
+    cmp qword [request_import],0
+    jne .import_length
     cmp rax,REQUEST_MAX
     ja .large
+    jmp .length_digit
+.import_length:
+    cmp rax,IMPORT_REQUEST_MAX
+    ja .large
+.length_digit:
     inc r9
     cmp r9,r10
     jb .cl_loop
@@ -373,8 +396,28 @@ validate_request:
     mov rax,r13
     sub rax,rbx
     add rax,[body_length]
+    cmp qword [request_import],0
+    jne .import_framing
     cmp rax,REQUEST_MAX
     ja .large
+    jmp .received
+.import_framing:
+    cmp rax,IMPORT_REQUEST_MAX
+    ja .large
+    push rax
+    call authorize_import_headers
+    test rax,rax
+    js .import_error
+    call import_acquire
+    test rax,rax
+    js .import_error
+    mov qword [request_cap],IMPORT_REQUEST_MAX
+    pop rax
+    jmp .received
+.import_error:
+    add rsp,8
+    jmp .return
+.received:
     cmp r12,rax
     jb .incomplete
     ja .bad

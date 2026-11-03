@@ -57,3 +57,32 @@ Verdict at baseline: **mitigate before shipping the next release**.
 - Private-page indexing: https://developers.google.com/search/docs/crawling-indexing/block-indexing
 
 See RELEASE.md for the actual fixes, validation and remaining risks.
+
+## Native planner security review — 2026-11-04
+
+The baseline findings above describe the original application, not the current
+release. Strict framing/exact fields and sessions address S01/S04/S05/S06/S08;
+checked bounded snapshots and regular-inode validation address S02/S03/S09;
+absolute deadlines, proxy/process limits, deterministic builds/binding and
+isolated tests address S07/S10/S11. Product and quality work is tracked in the
+planner plan and release evidence. The service now uses the dedicated asm-todo
+identity rather than the baseline shared user.
+
+The planner expands the attack surface through two document parsers, graph
+relationships, history and larger import bodies. Review focused on truncation,
+integer/UTF-8/surrogate errors, duplicate/unknown fields, reference confusion,
+combined cycles, capacity and output bounds, formula/HTML escaping, atomic import
+failure and compatible rollback. Mitigations and exact request/resource bounds
+are documented in [IMPORT.md](IMPORT.md) and [SECURITY.md](SECURITY.md). Both the
+native gate and isolated nginx independently reject concurrent large import
+requests while ordinary CRUD remains available. A read-only native storage
+preflight runs before deployment replaces binaries.
+
+Local verification passed 140 native/protocol/proxy/SEO tests. The actual service
+sandbox passed the expanded fresh-workspace probe, and independently extracted
+native backups preserved planner metadata through a sandboxed restart. Production
+and final remote CI evidence belongs in RELEASE.md after rollout. These checks
+do not establish memory safety or absence of vulnerabilities: the NASM binary
+remains non-PIE, bearer-key access has no revocation, aggregate anonymous disk
+usage lacks a quota, and off-host encrypted backups/external alerts still require
+operator configuration. No production fuzzing or load test was performed.

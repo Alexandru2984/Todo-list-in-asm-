@@ -1,14 +1,19 @@
 %include "src/defs.inc"
+%include "src/import.inc"
 DEFAULT ABS
 extern init_storage, parse_uint, validate_request, handle_request, send_error
+extern request_cap
 extern print, itoa
-extern strcmp, downgrade_storage
+extern strcmp, downgrade_storage, check_storage
 
 global _start
 section .data
     starting db 'ASM TODO listening on 127.0.0.1:',0
     newline db 10,0
     failure db 'ASM TODO: startup failed (storage, port or socket)',10,0
+    check_arg db '--check-storage',0
+    check_ok db 'ASM TODO: storage check passed',10,0
+    check_bad db 'ASM TODO: storage check failed; no workspace was rewritten',10,0
     version_arg db '--storage-version',0
     version_text db '3',10,0
     downgrade_arg db '--downgrade',0
@@ -21,7 +26,7 @@ section .data
 section .bss
     sock_fd resq 1
     client_fd resq 1
-    req_buf resb REQUEST_MAX+8 ; terminator and bounded lookahead padding
+    req_buf resb IMPORT_REQUEST_MAX+8 ; terminator and bounded lookahead padding
     port_str resb 24
 section .text
 _start:
@@ -29,6 +34,11 @@ _start:
     je .signals
     cmp qword [rsp], 2
     jne .fatal
+    mov rdi, [rsp+16]
+    mov rsi,check_arg
+    call strcmp
+    test rax,rax
+    jz .check
     mov rdi, [rsp+16]
     mov rsi,version_arg
     call strcmp
@@ -148,7 +158,7 @@ _start:
     add rsp,16
     xor r13d,r13d
 .read:
-    mov edx,REQUEST_MAX
+    mov rdx,[request_cap]
     sub rdx,r13
     jz .too_large
     mov eax,SYS_READ
@@ -219,4 +229,20 @@ _start:
     call print
     mov eax,SYS_EXIT
     xor edi,edi
+    syscall
+
+.check:
+    call check_storage
+    test rax,rax
+    js .check_failed
+    mov rdi,check_ok
+    call print
+    mov eax,SYS_EXIT
+    xor edi,edi
+    syscall
+.check_failed:
+    mov rdi,check_bad
+    call print
+    mov eax,SYS_EXIT
+    mov edi,1
     syscall

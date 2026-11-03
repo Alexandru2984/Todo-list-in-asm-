@@ -12,13 +12,20 @@ without Origin/Fetch Metadata still rely on SameSite cookies. Command-line
 clients can use cookies directly; Origin is a browser CSRF boundary, not a
 replacement for session authentication.
 
-HTTP is limited to one request per connection, 4095 total bytes, explicit
-Content-Length for POST, no transfer coding, no pipelining. A child has an
+HTTP is limited to one request per connection, 4095 header bytes and 4095 total
+bytes for ordinary requests, explicit Content-Length for POST, no transfer coding
+and no pipelining. Only exact POST /import-preview and /import may raise the total
+envelope to 7 MiB, after cookie/origin validation and acquiring a global native
+import lock. Their decoded source is capped at 2 MiB. Nginx independently applies
+7m only to these two paths and one shared import connection; ordinary routes stay
+at 4k. Duplicate fields, controls, malformed percent escapes and decoded NUL fail.
+The response buffer is capped at 8 MiB for escaped previews. A child has an
 absolute 15-second lifetime plus socket timeouts. Deployment MUST impose a
 process/memory cap and request rate limit; the application does not implement a
 worker pool or a global on-disk quota.
 
-Storage supports 1000 live tasks per workspace and 110 UTF-8 bytes per title.
+Storage supports 1000 live tasks, 200 retained trash items, one bounded undo state
+and 110 UTF-8 bytes per title. Files and native archive members cap at 2 MiB.
 Records are replayed under a per-workspace lock; writes create a full snapshot,
 check complete writes/fsync/close, rename atomically and sync the data directory.
 Corrupt, oversized or unreadable files return an error and are preserved.
@@ -27,7 +34,21 @@ record-only files remain readable. A failed write before rename preserves the
 previous snapshot. A failure after rename or loss of the response can be
 ambiguous: reload before retrying; request idempotency keys are a future feature.
 
-No-follow opens resist symlink redirection. The storage directory must remain
+Imports use native bounded JSON/CSV parsers, strict schemas/types/UTF-8, exact
+64-bit IDs, paired surrogate decoding and combined parent/dependency cycle checks.
+Every source reference is remapped within the imported document. Preview is
+read-only; explicit confirmation reparses under the write lock and commits once.
+HTML previews escape the source and task fields. CSV formula protection includes
+reversible escapeFlags. Imported documents are private workspace data; action
+history, undo snapshots and daily metrics are not imported.
+
+Permanent purge clears the undo snapshot and detaches surviving references. It
+does not erase existing native archives or operator-managed release snapshots.
+Offline native --check-storage validates all live workspaces without writing or
+printing their contents/keys, before deployment changes the binary.
+
+No-follow opens resist symlink redirection. Regular-inode and link-count checks
+precede reads/truncation; nonblocking opens also reject FIFO traps. The storage directory must remain
 private. Production runs under the dedicated `asm-todo` Unix identity, with private state,
 a syscall allowlist, loopback-only networking and process/memory caps. A global
 filesystem quota is still required to bound total anonymous workspace growth. Assembly code has fixed buffers and no memory-safe runtime;

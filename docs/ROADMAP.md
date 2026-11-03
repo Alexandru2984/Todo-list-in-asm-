@@ -25,13 +25,21 @@ Python/Playwright remain development or legacy verification tools.
 All subsequent task/storage/backup features should follow the same NASM-first
 constraint; no framework or interpreter backend should be introduced.
 
-## Next — richer organization
+## Release 3 — native planner
 
-- Priority and due dates, overdue view, tags/projects, subtasks and recurring tasks.
-  These require a versioned storage migration and compatibility tests first.
-- Drag ordering and board/calendar views with equivalent keyboard controls.
-- Bulk select, archive, duplicate task and bounded undo history.
-- Validated JSON import with preview, conflict policy and rollback.
+Implemented under the [delivery plan](PLANNER-PLAN.md): priorities/due dates,
+UTC date views, daily/weekday/weekly/monthly/yearly recurrence with anchors,
+projects/tags, subtasks/prerequisites, structured search, workspace undo/redo,
+recoverable trash, native calendar/board, private SVG activity and JSON/CSV
+preview/merge/replace import. Storage revision 3 reads V1/V2 and provides a
+native offline preflight/downgrade path. See [features](PLANNER-FEATURES.md) and
+[release verification](RELEASE.md) for release status and checks.
+
+## Next — additional organization
+
+- Manual drag ordering with equivalent keyboard controls; the native board and
+  calendar already work through normal HTML links/forms.
+- Bulk selection and archive; duplication and one-step workspace undo already ship.
 - Installable offline PWA: queue writes and resolve conflicts explicitly.
 - Romanian/English localization and user-selected timezone/date formats.
 
@@ -53,5 +61,5 @@ constraint; no framework or interpreter backend should be introduced.
 - Browser performance/accessibility budgets and real user feedback before adding
   dependencies, trackers, monetization or collaboration complexity.
 
-No ranking, traffic or adoption guarantees. Roadmap items outside Release 1 are
+No ranking, traffic or adoption guarantees. Items under Next and Discovery are
 proposals, not claims of delivered behavior.

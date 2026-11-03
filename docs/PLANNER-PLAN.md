@@ -25,7 +25,7 @@ commit without assistant/coauthor credits.
 - [x] Undo/trash/activity: soft delete/restore, latest 200 trash items, one atomic
   workspace-wide undo/redo snapshot (also covers bulk/recurrence/import), last 20
   activity events. Permanent purge clears undo content for the purged action.
-- [ ] Import: native bounded JSON v1/v2 and CSV parsers, validated preview,
+- [x] Import: native bounded JSON v1/v2 and CSV parsers, validated preview,
   merge/replace confirmation, reference remapping, atomic apply and undo.
 - [x] Search: structured AND operators for priority/status/due/project/tag and
   free text; strict operator/date validation; reuse the native Unicode matcher.
@@ -43,11 +43,11 @@ completion time, parent, recurrence/anchor, project, tags, up to eight dependenc
 IDs, workflow stage, deletion time and previous completion state. There are at
 most 1000 live tasks and 200 retained trash entries.
 
-New snapshots use an explicit V2 header, current-task records, a bounded previous
+New snapshots use an explicit revision 3 header, V2 current-task records, a bounded previous
 workspace snapshot, activity records and UTC metric buckets. A file remains the
 atomic transaction boundary: checked full writes, fsync, rename and directory
 fsync under a stable per-workspace flock. Legacy V1 files remain readable and are
-not rewritten by GET requests. Mutation writes V2; corrupt files fail closed.
+not rewritten by GET requests. Mutation writes revision 3; corrupt files fail closed.
 
 A native `--downgrade` maintenance command validates all files before writing V1
 live records. Deployment rollback preserves the V2 state first and invokes the
@@ -130,3 +130,11 @@ or compliance guarantee is inferred from this repository.
   layout-specific light/dark axe cases passed on desktop/mobile. Native month
   grids, day counts, workflow/undo redirects, chart privacy and UTC buckets have
   independent parsers/oracles. Large imports and final production release remain.
+
+- Import stage: 140 native/protocol/proxy/SEO checks passed. JSON/CSV round trips,
+  malformed/duplicate fields, UTF-8/surrogates, formula escaping, graph references,
+  capacity, atomic failures and adversarial inputs are covered. Exact 2 MiB decoded
+  sources, 1,200 records and previews exceeding 4 MiB passed. Large requests have
+  a 7 MiB wire envelope, unchanged 4095-byte headers, a single global import slot
+  in nginx and the native service, and an 8 MiB response buffer. Ordinary requests
+  keep their 4095-byte envelope. The prior full browser run passed all 32 cases.

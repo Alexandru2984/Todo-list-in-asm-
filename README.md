@@ -22,6 +22,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
 - Native structured AND search for priority/status/dates/projects/tags, quoted
   phrases and exact metadata matching.
+- Native JSON v1/v2 and CSV import with validated preview, merge/replace, exact
+  reference remapping and atomic undo; no JavaScript parser/backend.
 - Native month calendar, workflow board and private SVG completion activity,
   including weekly/monthly totals and UTC streaks.
 - Optional JavaScript adds light/dark themes, keyboard shortcuts (`N` and `/`),
@@ -74,7 +76,7 @@ npm audit --audit-level=high
 ```
 
 Every test server uses a new temporary directory, random sessions and a selected
-loopback port. Tests never delete a production UID or bind the live port.
+loopback port. Proxy policy tests additionally require nginx. Tests never delete a production UID or bind the live port.
 The compatibility entry point `tests/smoke.sh` runs the isolated Python suite.
 GitHub Actions has separate security/storage and browser/accessibility jobs,
 read-only repository permissions, pinned action SHAs, timeouts and failure reports.
@@ -108,7 +110,11 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `src/router.asm` | Routing, sessions, same-origin checks, forms, escaping and rendering |
 | `src/view.asm` | Native query parser, Unicode search, bounded merge sort and statistics |
 | `src/template.asm` | Native HTML interpolation and edit/confirmation forms |
-| `src/export.asm` | Native JSON/CSV serialization and formula protection |
+| `src/export*.asm` | Native JSON/CSV serialization and formula protection |
+| `src/json.asm`, `src/csv.asm`, `src/import*.asm` | Bounded native lexers, import preview/confirmation, reference remapping and global admission lock |
+| `src/query.asm`, `src/layout.asm`, `src/insights.asm` | Structured search, calendar/board and private SVG statistics |
+| `src/history.asm`, `src/relations.asm`, `src/recurrence.asm` | Undo/trash, graph validation and native recurring dates |
+| `src/maintenance.asm` | Read-only storage preflight, reader revision and offline downgrade |
 | `native/backup.asm` | Native TAR snapshots, verification, atomic publication and retention |
 | `native/sha256.asm` | Native SHA-256 integrity implementation |
 | `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
@@ -117,15 +123,18 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `deploy/` | Reviewed systemd/nginx configurations and deployment procedure |
 | `tools/backup.py` | Legacy .tar.gz compatibility/rollback tool; no scheduled use |
 
-Versioned snapshots preserve legacy V1 reads and write explicit V2 metadata
-on mutation. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
+Versioned snapshots preserve legacy V1/V2 reads and write revision 3 with explicit
+metadata on mutation. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
 workspace-wide undo/redo and bounded activity in the
 [revision 3 extension](docs/STORAGE-HISTORY.md). The native
 offline downgrade command supports rollback to older binaries. See the
 [storage contract](docs/STORAGE-V2.md).
 
-Limits: 1,000 tasks per workspace, 110 **UTF-8 bytes** per title, 4,095 request
-bytes, one HTTP request per connection. There is no runtime TLS, account recovery,
+Limits: 1,000 live tasks plus 200 trash items per workspace, 110 **UTF-8 bytes**
+per title, 4,095 bytes per ordinary request/header block and one HTTP request per
+connection. Only authenticated import paths admit up to 7 MiB of form-encoded
+request, with a 2 MiB decoded source cap and one global importer. See the
+[import contract](docs/IMPORT.md). There is no runtime TLS, account recovery,
 server-side session revocation, offline queue or collaboration layer.
 
 The [native planner delivery plan](docs/PLANNER-PLAN.md) tracks recurrence,

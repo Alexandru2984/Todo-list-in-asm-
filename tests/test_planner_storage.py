@@ -132,3 +132,18 @@ class PlannerStorageTests(unittest.TestCase):
                     self.assertEqual(self.post('/add',{'title':'must fail'}),500 if not suffix else 507)
                     self.assertEqual(outside.read_text(),'private unrelated')
                     target.unlink()
+
+    def test_native_storage_preflight_is_read_only_across_legacy_and_current_files(self):
+        self.assertEqual(self.post('/add', {'title':'native preflight'}),303)
+        other=self.server.file(self.server.session());other.write_text('1|0|0|legacy\n')
+        self.server.stop()
+        before=self.path.read_bytes();legacy=other.read_bytes()
+        result=subprocess.run([str(BINARY),'--check-storage'],cwd=self.server.root,capture_output=True,timeout=5)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.path.read_bytes(),before);self.assertEqual(other.read_bytes(),legacy)
+        other.write_text('1|0|0|torn record')
+        result=subprocess.run([str(BINARY),'--check-storage'],cwd=self.server.root,capture_output=True,timeout=5)
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(self.path.read_bytes(),before)
+        self.assertEqual(other.read_text(),'1|0|0|torn record')
+        self.assertNotIn(self.cookie.split('=')[1].encode(),result.stdout+result.stderr)

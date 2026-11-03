@@ -39,6 +39,8 @@ class DeploymentProbeTests(unittest.TestCase):
         thread.start()
         try:
             probe(f'http://127.0.0.1:{proxy.server_port}', server.root/'data')
-            self.assertEqual(list((server.root/'data').iterdir()), [])
+            self.assertEqual(list((server.root/'data').glob('todos-*')), [])
+            # The shared import mutex must never be unlinked by a user probe.
+            self.assertTrue((server.root/'data'/'.import.lock').is_file())
         finally:
             proxy.shutdown(); proxy.server_close(); thread.join(timeout=5)
