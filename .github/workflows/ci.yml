@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Assembly toolchain
         run: sudo apt-get update && sudo apt-get install -y nasm binutils
-      - name: Build and test protocol, sessions and persistence
+      - name: Build native server/backup and test protocol, persistence and archives
         run: make test
       - name: Check patch formatting
         run: git diff --check
@@ -45,7 +45,7 @@ jobs:
         run: npx playwright install --with-deps chromium --only-shell
       - name: Build and check JavaScript
         run: make all && node --check web/app.js
-      - name: Desktop, mobile and automated WCAG checks
+      - name: Desktop/mobile, no-JavaScript workflows and automated WCAG checks
         run: npm run test:ui
       - name: Upload browser report
         if: failure()

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Private, verified local task snapshots. Does not upload data anywhere."""
+"""Legacy .tar.gz snapshots/verification; production backups use native/backup.asm.
+Retained for old archives and rollback compatibility. No external upload.
+"""
 import argparse
 from datetime import datetime, timezone, timedelta
 import hashlib

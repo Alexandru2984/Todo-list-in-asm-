@@ -4,7 +4,10 @@ After=asm-canary.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /srv/canary/asm.micutu.com/app/tools/backup.py
+WorkingDirectory=/var/lib/asm-todo
+ExecStart=/srv/canary/asm.micutu.com/app/bin/backup /var/lib/asm-todo/data /var/backups/asm-todo
+TimeoutStartSec=10min
+LimitCORE=0
 User=root
 UMask=0077
 Nice=10
@@ -20,3 +23,13 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX
+
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+MemoryDenyWriteExecute=yes
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallArchitectures=native
+SystemCallFilter=read write open openat close fstat fchmod umask getdents64 getrandom flock fsync renameat2 unlinkat time mkdir prctl execve execveat exit exit_group
+SystemCallErrorNumber=EPERM
+IPAddressDeny=any

@@ -2,6 +2,7 @@
 """Create and test a fresh probe workspace; never reads existing users' tasks."""
 import argparse
 import http.client
+import json
 from pathlib import Path
 import re
 import time
@@ -47,11 +48,19 @@ def probe(base, cleanup_data=None):
         assert 'unsafe-inline' not in headers['Content-Security-Policy'], 'CSP failed'
         assert 'no-transform' in headers['Cache-Control'], 'Edge transformation policy failed'
         assert b'challenge-platform' not in body and b'static.cloudflareinsights.com' not in body, 'Unexpected edge script injection'
+        status, exported_headers, exported_body = request('GET', '/export.json')
+        assert status == 200 and 'attachment' in exported_headers['Content-Disposition'], 'Native JSON download failed'
+        assert json.loads(exported_body)['tasks'][0]['title'] == 'Release verification', 'Native JSON contents failed'
+        status, exported_headers, exported_body = request('GET', '/export.csv')
+        assert status == 200 and b'Release verification' in exported_body, 'Native CSV download failed'
+        status, _, filtered = request('GET', '/app?q=definitely-no-match')
+        assert status == 200 and b'<li data-id=' not in filtered, 'Native search failed'
+        assert b'data-count="total">1<' in filtered, 'Native counts failed'
         for path, data in [('/complete', {'id': '1'}), ('/reopen', {'id': '1'}),
                            ('/edit', {'id': '1', 'title': 'Verified'}), ('/delete', {'id': '1'})]:
             assert request('POST', path, data)[0] == 303, f'{path} failed'
         assert b'Release verification' not in request('GET', '/app')[2], 'Delete did not persist'
-        print('Release probe passed: health, session, private page and full task lifecycle')
+        print('Release probe passed: health, session, native search/counts/exports and full task lifecycle')
     finally:
         # Only the fresh getrandom session created by this invocation is removed.
         if cleanup_data and token and re.fullmatch('[a-f0-9]{32}', token):

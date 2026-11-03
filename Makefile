@@ -9,7 +9,7 @@ WEB := $(wildcard web/*)
 TARGET := build/server
 
 .PHONY: all clean run test check
-all: $(TARGET)
+all: $(TARGET) build/backup
 
 build:
 	mkdir -p build
@@ -21,6 +21,15 @@ build/%.o: src/%.asm src/defs.inc | build
 	$(ASM) $(ASMFLAGS) $< -o $@
 
 build/router.o: $(WEB)
+
+build/backup: build/backup-native.o build/sha256.o build/utils.o
+	$(LD) $(LDFLAGS) -o $@ $^
+
+build/backup-native.o: native/backup.asm src/defs.inc | build
+	$(ASM) $(ASMFLAGS) $< -o $@
+
+build/sha256.o: native/sha256.asm | build
+	$(ASM) $(ASMFLAGS) $< -o $@
 
 run: all
 	mkdir -p data
