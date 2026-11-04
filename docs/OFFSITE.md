@@ -61,7 +61,9 @@ prefix is not IAM. Shared-provider/crypt compromise may affect other projects.
 The monitoring stage's five-minute timer requires both archive and verification timestamps to be
 within 93,600 seconds. It checks a receipt, not the provider. A late/absent record
 fails the health unit. Worker failures retry after 15 minutes, limited to three
-starts in two hours. External alert delivery/on-call remain unconfigured.
+starts in two hours. The subsequent [monitoring stage](MONITORING.md) adds approved
+Telegram/email failure/recovery notifications without private logs. Staffed
+on-call coverage and independent host-loss detection remain unverified.
 
     sudo systemctl status asm-backup.timer asm-offsite.service asm-offsite-health.timer
     sudo journalctl -u asm-offsite.service -u asm-offsite-health.service --since '1 day ago'

@@ -64,8 +64,9 @@ notification delivery/on-call is configured. Current MTTD is unmeasured.
 No task text, cookie headers or recovery keys belong in alert payloads.
 
 The native monitoring stage implements exact health/capacity checks and private
-backup failure/recovery hooks. External delivery stays gated until explicit
-operator activation; see MONITORING.md for the test message and acceptance.
+backup failure/recovery hooks. The operator approved external delivery, and the
+real commissioning test was accepted via Telegram. The root-private opt-in
+marker persists this choice; see MONITORING.md for test content and evidence.
 Rate/5xx telemetry, independent host-loss detection and staffed on-call coverage
 remain separate work. Monitoring does not enforce filesystem quotas.
 

@@ -117,7 +117,10 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   delivery, with all notification traffic confined to a loopback fake provider.
   Production HTTP/HTTPS/capacity/freshness checks passed and timers are active;
   live task hashes/count, web binary and process start were unchanged. External
-  notification delivery remains behind explicit opt-in, pending operator choice.
+  notification delivery was then explicitly approved by the operator. One real
+  commissioning test was accepted via Telegram; incident/recovery hooks are now
+  enabled with metadata-only payloads and isolated test state. All checks remained
+  healthy after activation. Provider acceptance does not prove human acknowledgement.
   See [monitoring contract and evidence](MONITORING.md).
 - Offsite commit **d962625** passed [Actions 41817846977](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41817846977):
   **222 native/integration tests and 48 browser cases**, without flaky retries.

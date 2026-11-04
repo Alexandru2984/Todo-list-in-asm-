@@ -146,6 +146,14 @@ Rollback files are private at
 /var/backups/asm-todo/monitoring-releases/20261104T203629Z.
 
 At this acceptance point delivery remained gated: the activation marker was
-absent and production notification state was empty. External activation/test
-requires the operator's pending explicit choice. No live provider-delivery claim
-is made from mock-provider tests or a successful local health check.
+absent and production notification state was empty. No live provider-delivery
+claim was made from mocks or a successful local health check.
+
+The operator then explicitly approved ongoing delivery through the existing
+Telegram/email fallback channel and one commissioning test. The private opt-in
+marker was created. The actual relay confirmed one test accepted via Telegram at
+2026-11-04T20:44:03Z; no second test was sent. Test incident state is isolated from
+production, whose active-incident set remained empty. Loopback/public health,
+capacity and freshness checks all remained successful after activation. The
+notifier identity belongs to neither adm nor systemd-journal, in addition to
+forced log exclusion. Provider acceptance is not a claim of human acknowledgement.
