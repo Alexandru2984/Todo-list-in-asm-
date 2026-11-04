@@ -42,7 +42,6 @@ section .data
     config_arg db '--config',0
     immutable_arg db '--immutable',0
     existing_arg db '--ignore-existing',0
-    inplace_arg db '--inplace',0
     retries_arg db '--retries=2',0
     low_retries_arg db '--low-level-retries=2',0
     connect_arg db '--contimeout=15s',0
@@ -496,6 +495,9 @@ stage:
     call join
     mov rdi,source_path
     call verify
+    ; Recover interrupted cache before allocating another large staged copy.
+    ; The verified source and every remote object remain untouched on failure.
+    call prune_spool
     mov rdi,stage_path
     mov rsi,[spool]
     mov rdx,latest
@@ -656,7 +658,12 @@ prune_spool:
     lea rdi,[r13+19]
     call archive_epoch
     test rax,rax
+    jnz .remove
+    lea rdi,[r13+19]
+    call cache_name
+    test rax,rax
     jz .next
+.remove:
     lea rsi,[r13+19]
     call remove_private
 .next:
@@ -667,6 +674,61 @@ prune_spool:
 .done:
     mov rdi,[spool_fd]
     jmp sync_fd
+
+; Recover only this worker's interrupted copy/download cache after a crash.
+cache_name:
+    push rbx
+    mov rbx,rdi
+    call strlen
+    cmp rax,5
+    jb .no
+    lea r8,[rbx+rax-5]
+    cmp dword [r8],'.par'
+    jne .download
+    cmp byte [r8+4],'t'
+    jne .download
+    mov byte [r8],0
+    push r8
+    mov rdi,rbx
+    call archive_epoch
+    pop r8
+    mov byte [r8],'.'
+    test rax,rax
+    jnz .yes
+.download:
+    mov rdi,rbx
+    call strlen
+    cmp rax,18
+    je .exact
+    cmp rax,28
+    jb .no
+    cmp rax,96
+    ja .no
+    mov rdx,'.partial'
+    cmp qword [rbx+rax-8],rdx
+    jne .no
+    mov rdi,rbx
+    mov rsi,download_name
+    mov ecx,18
+    repe cmpsb
+    jne .no
+    cmp byte [rdi],'.'
+    jne .no
+    jmp .yes
+.exact:
+    mov rdi,rbx
+    mov rsi,download_name
+    call strcmp
+    test rax,rax
+    jnz .no
+.yes:
+    mov eax,1
+    jmp .done
+.no:
+    xor eax,eax
+.done:
+    pop rbx
+    ret
 
 ship:
     mov rdi,[spool_fd]
@@ -775,7 +837,7 @@ transport:
     mov rax,[config]
     mov [args+40],rax
     mov qword [args+48],immutable_arg
-    mov qword [args+56],inplace_arg
+    mov qword [args+56],existing_arg
     mov qword [args+64],retries_arg
     mov qword [args+72],low_retries_arg
     mov qword [args+80],connect_arg
@@ -787,8 +849,7 @@ transport:
     mov qword [args+128],quiet_arg
     mov qword [args+136],stats_arg
     mov qword [args+144],prompt_arg
-    mov qword [args+152],existing_arg
-    mov qword [args+160],0
+    mov qword [args+152],0
     mov rdi,args
     jmp spawn
 

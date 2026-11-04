@@ -2,6 +2,7 @@
 import fcntl
 import json
 import os
+import resource
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 BINARY = REPO / 'build/offsite'
 BACKUP = REPO / 'build/backup'
-RCLONE = shutil.which('rclone')
+RCLONE = os.environ.get('ASM_TEST_RCLONE') or shutil.which('rclone')
 
 
 @unittest.skipIf(os.getuid() == 0, 'Transport state must have a non-root owner')
@@ -56,7 +57,11 @@ class OffsiteTests(unittest.TestCase):
         self.config.chmod(0o600)
 
     def ship(self, binary=None, **kw):
-        return self.run_native('--ship',self.spool,self.config,self.remote_arg,binary or RCLONE,**kw)
+        result=self.run_native('--ship',self.spool,self.config,self.remote_arg,binary or RCLONE,**kw)
+        # These logs contain disposable fixture paths/config only, never prod data.
+        if result.returncode and (self.spool/'transport.log').exists():
+            result.stderr += (self.spool/'transport.log').read_bytes()
+        return result
 
     def status(self):
         return self.run_native('--status',self.spool,93600)
@@ -110,6 +115,16 @@ else:
         self.assertEqual(old.read_bytes(),before)
         self.assertFalse((self.spool/path.name).exists())
 
+    def test_interrupted_cache_is_collected_without_touching_other_files(self):
+        archive=self.stage()
+        cache=[archive.name+'.part','.restore-check.tar','.restore-check.tar.random.partial']
+        keep=['unrelated.part','.restore-check.tar.keep','private-config']
+        for name in cache+keep:
+            path=self.spool/name;path.write_text('fixture');path.chmod(0o600)
+        self.stage()
+        for name in cache:self.assertFalse((self.spool/name).exists(),name)
+        for name in keep:self.assertEqual((self.spool/name).read_text(),'fixture')
+
     def test_stale_future_and_malformed_archive_names_cannot_refresh_health(self):
         original=next(self.archives.glob('*.tar'))
         for name in ['asm-todo-1600000000-0123456789abcdef.tar',
@@ -127,6 +142,16 @@ else:
                 start=time.monotonic()
                 self.assertNotEqual(self.run_native('--stage',self.archives,self.spool).returncode,0)
                 self.assertLess(time.monotonic()-start,2)
+
+    def test_interrupted_cache_is_recovered_even_if_the_next_copy_runs_out_of_space(self):
+        old=self.spool/'asm-todo-1600000000-0123456789abcdef.tar.part'
+        old.write_bytes(b'x'*4096);old.chmod(0o600)
+        source=next(self.archives.glob('*.tar'));before=source.read_bytes()
+        def limit():resource.setrlimit(resource.RLIMIT_FSIZE,(1024,1024))
+        result=self.run_native('--stage',self.archives,self.spool,preexec_fn=limit)
+        self.assertNotEqual(result.returncode,0);self.assertFalse(old.exists())
+        self.assertEqual(source.read_bytes(),before)
+        self.assertFalse((self.spool/'last-success').exists());self.stage()
 
     def test_unsafe_source_and_destination_inodes_are_refused(self):
         original=next(self.archives.glob('*.tar'));payload=original.read_bytes()

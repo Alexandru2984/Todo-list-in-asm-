@@ -46,6 +46,10 @@ and its Drive/S3 dependency to /var/lib/asm-offsite/rclone.conf, mode 0600. Othe
 remotes are excluded. Reinstall preserves refreshed private OAuth tokens and
 refuses silent crypt-key changes. The shared config stays unchanged. No website
 restart, credential upload or crypt-key rotation is performed.
+Unsupported advanced crypt options are rejected rather than silently changing
+path/key behavior. Transport is tested with rclone 1.60.1 and the installed 1.75.0;
+it avoids version-specific download flags. Interrupted private staging/readback
+cache is collected before allocating another copy, including disk-full recovery.
 
 Transport has no capabilities, NoNewPrivileges, a syscall filter, ProtectHome,
 ProtectSystem, 256 MiB/32-task limits and a 45-minute deadline. Only native
@@ -108,7 +112,7 @@ No vendor/account is added. Monetary ALE, legal scope and external MTTD are
 unknown. A staffed incident tabletop, DPA review and recovery from independently
 escrowed secrets are unverified. The operational response walkthrough is above.
 
-- [x] 22 focused offsite/config tests, with real local rclone crypt, failed upload,
+- [x] 24 focused offsite/config tests, with real local rclone crypt, failed upload,
   tampered ciphertext, stale health and V5 restore retaining newer revocation.
 - [x] Exact systemd transport/health sandbox using a disposable Unix identity.
   Transport could not read source archives; tampering did not advance success.

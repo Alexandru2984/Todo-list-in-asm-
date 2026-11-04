@@ -31,6 +31,8 @@ def isolate(source, destination, alias):
     selected = configparser.RawConfigParser()
     selected[base] = dict(backend)
     fields = ['type','remote','password','password2','filename_encryption','directory_name_encryption','no_data_encryption']
+    if set(crypt)-set(fields)-{'description'}:
+        raise ValueError('Advanced crypt settings need explicit compatibility review')
     selected[alias] = {key:crypt[key] for key in fields if key in crypt}
     if destination.exists() or destination.is_symlink():
         if (destination.is_symlink() or not destination.is_file() or destination.stat().st_nlink != 1 or

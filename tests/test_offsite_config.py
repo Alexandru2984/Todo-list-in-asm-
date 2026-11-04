@@ -44,6 +44,7 @@ class OffsiteConfigTests(unittest.TestCase):
         for text in [self.text.replace('type = crypt','type = local'),
                      self.text.replace('password2 = fixture-salt','no_data_encryption = true'),
                      self.text.replace('password2 = fixture-salt','filename_encryption = off'),
+                     self.text.replace('password2 = fixture-salt','filename_encoding = base64'),
                      self.text.replace('token = original-token','service_account_file = /private/secret')]:
             self.source.write_text(text)
             with self.assertRaises(ValueError):self.isolate()
