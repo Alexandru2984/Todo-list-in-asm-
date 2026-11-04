@@ -86,3 +86,21 @@ do not establish memory safety or absence of vulnerabilities: the NASM binary
 remains non-PIE, bearer-key access has no revocation, aggregate anonymous disk
 usage lacks a quota, and off-host encrypted backups/external alerts still require
 operator configuration. No production fuzzing or load test was performed.
+
+## V4 and admission follow-up — 2026-11-04
+
+The external review correctly separated historical issues from remaining risks.
+Native V4 now addresses logical stale writes and exact retry duplication with
+atomic persisted receipts; native admission/read-only snapshots bound protocol-
+managed workspace growth and remove cheap GET lock-inode allocation. Real
+EMFILE/EAGAIN tests verify listener backoff/recovery. Current public proxy source-
+IP forwarding was checked without changing shared configuration. Full evidence:
+[reliability release](RELIABILITY-PLAN.md), 177 integration / 44 browser cases.
+
+These are scoped mitigations: recovery-key rotation/revocation remains unresolved;
+backups are local; external alerts/destination and an OS filesystem budget still
+need configuration. Non-PIE/manual buffers, continuous fuzzing and benchmark-based
+worker decisions remain research/engineering work, with no exploit or memory-
+safety certification inferred. The next product priorities include descriptions,
+bulk actions, saved views, templates and timezone/RO-EN semantics after these
+security foundations. No staffed/legal incident-response exercise is claimed.

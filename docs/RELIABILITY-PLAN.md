@@ -16,7 +16,7 @@ Every completed stage receives a separate owner-attributed commit.
 - [x] Abuse/overload: remove persistent read-only lock creation, enforce bounded
   admission for new workspaces, keep stable write locks, and back off on accept/
   fork resource failures. Do not expire/delete user workspaces automatically.
-- [ ] Release: full native/browser/no-JavaScript/axe checks, actual green CI,
+- [x] Release: full native/browser/no-JavaScript/axe checks, actual green CI,
   exact service sandbox, older-reader drill, scoped production rollout and
   fresh-workspace HTTPS/hash/backup verification.
 
@@ -92,3 +92,30 @@ probe matched nginx's logged source against the Cloudflare trace source; a
 separate spoofed CF-Connecting-IP request received 403. No IP addresses/task data
 were recorded here and no shared VPS proxy configuration was changed. This is a
 concrete path check, not a claim that external alert delivery is configured.
+
+## Final release evidence
+
+Functional commit 761f3af passed GitHub Actions 41760455940: 177 integration tests
+and all 44 browser cases. Both native binaries remain static NASM/raw syscalls;
+optional browser JavaScript remains 75 lines. No runtime dependency was added.
+
+The exact systemd sandbox passed native V4/protocol/admission probes and a verified
+archive restore. The actual prior production V3 reader successfully read converted
+V4 fixture data with recurrence/project/tag/priority metadata preserved.
+
+Production rollout succeeded with private rollback snapshot
+/var/backups/asm-todo/releases/20261104T022733Z. Direct and public HTTPS probes
+passed V4 replay/different-body rejection plus all existing planner/import/calendar
+flows. Public Pixel 5 Chromium with JavaScript disabled passed exact retry,
+two-tab conflict, preserved/reviewed draft, monotonic revision, 428 enforcement
+and responsive widths. Original task-file hashes and workspace count matched the
+private baseline after probe cleanup. The actual backup service completed and
+its latest archive passed independent extraction/hash comparison plus native
+validation in isolated storage. Service/timer remain active; deployed binary
+matches the verified build, with NoNewPrivileges and seccomp active.
+
+The supplied review is incorporated in the next-stage list above. Recovery-key
+rotation/revocation is still the next unresolved product security priority.
+Off-host destination/alert delivery, filesystem-level quota, continuous fuzzing,
+PIE research and benchmarks remain separate work; this release does not claim
+those controls or a certified/fully finished 1.0 security posture.

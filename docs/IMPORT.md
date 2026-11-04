@@ -41,7 +41,10 @@ prunes existing trash. Empty merge is a no-op; empty replace is undoable clear.
 One checked write/fsync/rename/directory-fsync publishes the entire import and
 previous workspace snapshot. Failure before rename preserves the old snapshot;
 after rename or a lost response the result can be ambiguous, so reload before
-retrying. No idempotency key is claimed. Capacity/storage errors return an escaped
+retrying. Protected V4 imports record the original operation ID/fingerprint in
+the same snapshot, so exact recent retries do not reapply the import. Stale forms
+return a 412 preview retaining the source and must be explicitly reviewed again.
+Capacity/storage errors return an escaped
 confirmation page retaining the source. Imported action history, undo states and
 daily metrics are intentionally outside the portable task schema.
 

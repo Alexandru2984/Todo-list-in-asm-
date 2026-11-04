@@ -27,8 +27,8 @@ native backup members are capped at 2 MiB. Due dates are UTC midnight. Completio
 times are captured on new completions; legacy completion times stay unknown.
 
 Legacy V1 replay files remain readable. A GET never migrates or rewrites data.
-The next successful mutation writes revision 3 atomically, retaining the V2
-base/metadata representation. Native deletion retains a
+Protected HTTP mutations now activate [revision 4](STORAGE-V4.md) atomically,
+retaining the V2 base/metadata representation and revision 3 history. Native deletion retains a
 bounded trash entry and includes descendants; oldest trash beyond 200 entries is
 removed and references are detached. Trash restoration, undo and activity now use the backward-compatible
 [revision 3 extension](STORAGE-HISTORY.md).

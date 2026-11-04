@@ -204,3 +204,14 @@ uses the workspace cookie and does not contain your recovery key.
 It is a snapshot: later edits are not synchronized and no extra future recurring
 occurrences are generated. Keep JSON/CSV for a complete task backup. See the
 [calendar export contract](CALENDAR-EXPORT.md) for encoding/privacy and limits.
+
+## Multiple tabs and safe retries
+
+Forms remember the workspace state they were rendered from. If another tab saves
+first, a stale write is rejected with **Workspace changed** and its draft/source
+is preserved. Review the current workspace before explicitly applying the draft.
+A recent exact retry of a successful change returns the original redirect without
+adding another task/import or replaying undo. Revisions and the last 16 successful
+request receipts persist across restart and native backups; undo never rewinds
+the workspace revision. See [the V4 contract](STORAGE-V4.md) for client/restore
+bounds. Admission capacity can delay new workspaces while existing ones stay usable.

@@ -8,6 +8,19 @@ framework, interpreter or database runtime was added.
 
 ## Delivered
 
+- Storage V4 adds monotonic workspace revisions, scoped state preconditions and
+  16 atomically persisted successful request receipts. Exact retries do not write
+  twice; stale/different-body reuse returns 412 with preserved native drafts.
+  V4 clients must supply the write pair (428 otherwise); GET /state.json provides
+  the private protocol. V1/V2/V3 reads stay byte-unchanged.
+- New native admission reserves up to 1,024 workspace identities; read-only
+  GET/HEAD/import-preview allocate no per-workspace locks. Existing writers keep
+  working at capacity; no user data/lock reservations are automatically expired.
+- Listener resource failures back off 100 ms and recover after pressure clears.
+  The service adds only getdents64/nanosleep to its existing syscall restrictions.
+- V4-to-V3 rollback preserves task metadata/history/metrics; the native V1 fallback
+  and all-file preflight remain available. See STORAGE-V4.md and ADMISSION.md.
+
 - Quick capture accepts one literal title per line, validates/ previews the
   complete batch and appends atomically with fresh IDs/current timestamps and
   one undo step. Empty lines are ignored; UTF-8/title/capacity bounds are enforced.
@@ -51,11 +64,11 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Verification
 
-- **151 local integration tests passed**: protocol, storage/revisions, recurrence,
+- **177 local integration tests passed**: protocol, storage/revisions, recurrence,
   metadata/relationships, history, query/layout/statistics, exports/imports, native
   backup/legacy archive compatibility, deployment probes, real isolated nginx
   policy and public crawler resources. JavaScript syntax and patch checks passed.
-- **38 browser tests passed** on desktop and Pixel 5 emulation, including native
+- **44 browser tests passed** on desktop and Pixel 5 emulation, including native
   no-JavaScript workflows, import preview/merge/replace/undo, layout checks at
   320/390/768/1440 px and automated axe WCAG A/AA checks in light/dark themes.
   Automated axe results are not an accessibility certification.
@@ -64,9 +77,9 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   JSON/CSV, overflow, Unicode/surrogates, formula text, source-reference isolation,
   combined cycles, capacity/write failures and concurrent import rejection.
 - Development dependency audit reported zero known vulnerabilities.
-- Actual GitHub Actions [run 41740662580](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41740662580)
-  passed both security-and-storage (**151 tests**) and browser-and-accessibility
-  (**38 tests**) for functional release commit **9b50cee**. Earlier per-stage
+- Actual GitHub Actions [run 41760455940](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41760455940)
+  passed both security-and-storage (**177 tests**) and browser-and-accessibility
+  (**44 tests**) for functional release commit **761f3af**. Earlier per-stage
   commits also have successful runs. The original dark-theme CI contrast failure
   was repaired without disabling axe checks.
 - The exact production service sandbox passed a fresh-workspace rehearsal on a
@@ -78,7 +91,7 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 ## Production verification
 
 - deploy/apply.sh created a private binary/config/data rollback snapshot at
-  /var/backups/asm-todo/releases/20261103T234023Z, stopped ASM traffic, validated
+  /var/backups/asm-todo/releases/20261104T022733Z, stopped ASM traffic, validated
   existing storage without rewriting tasks, atomically installed the binaries,
   then passed direct and public HTTPS fresh-workspace probes.
 - Those probes covered native CRUD, structured search, recurrence/anchors,
@@ -89,7 +102,9 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   planner/board/calendar workflow, completion statistics and responsive widths
   from 320 to 1440 px. The productivity increment additionally passed public
   mobile capture/atomic undo/redo, date editing and the actual calendar download.
-  Temporary workspaces were removed after inspection.
+  V4 additionally passed an exact retry, two-tab conflict, preserved/reviewed draft,
+  monotonic revision and missing-precondition rejection on public mobile Chromium
+  without JavaScript. Temporary workspaces were removed after inspection.
 - Original production task-file SHA-256 hashes and workspace count matched the
   private pre-release baseline after all probe cleanup. No existing workspace
   was used for test mutations.
@@ -103,7 +118,7 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   were not changed.
 - Rollback compares reader revisions before restoring an older binary. Cross-
   revision rollback first preserves planner state and converts with the new
-  native binary. A failed conversion restores the compatible copy; a failed
+  native binary (V3 conversion retains planner metadata/history). A failed conversion restores the compatible copy; a failed
   recovery copy leaves the service stopped. See [storage history](STORAGE-HISTORY.md).
 - Each completed stage uses the existing repository owner's commit identity,
   without assistant credits or coauthor trailers.
@@ -111,13 +126,16 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 ## Remaining limits
 
 Anonymous bearer keys are not accounts and have no server-side revocation or
-account recovery. Aggregate anonymous disk growth has no global quota. Off-host
+account recovery. Native admission bounds protocol-managed reservations to 1,024 workspaces; no
+OS filesystem/user quota or automatic expiry is configured. Off-host
 encrypted backups and external alert delivery remain operator configuration;
 local archives do not protect against VPS loss. Purge does not erase retained
 archives or operator-managed release/recovery snapshots.
 
-There is no request idempotency key: a lost response or failure after rename can
-be ambiguous, so reload before retrying. Unicode matching uses the documented
+Protected V4 requests have a bounded 16-receipt retry window, committed with task
+state. Reuse the exact original body/pair after a lost response. Restoring an older
+archive also restores its receipt window; no indefinite/cross-restore exactly-once
+guarantee is claimed. Legacy clients before V4 activation lack these protections. Unicode matching uses the documented
 simple folds rather than full normalization/collation, and dates use UTC. The
 native parser/crypto implementations have independent format/hash oracles and
 adversarial tests, without formal memory-safety or security certification. Backup

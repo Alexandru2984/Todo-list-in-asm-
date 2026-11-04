@@ -42,6 +42,15 @@ undo, plus private .ics downloads for scheduled tasks. Essential flows work
 without JavaScript; storage revision 3 remains compatible. See the completed
 [productivity delivery plan and proposed next steps](PRODUCTIVITY-PLAN.md).
 
+## Release 5 — consistency and bounded admission
+
+Released on 2026-11-04: native V4 revisions/replay receipts, draft-preserving
+conflict recovery, private protocol discovery, metadata-preserving V3 rollback,
+read-only snapshot reads without persistent lock creation, bounded new-workspace
+admission and accept/fork error backoff. See the completed
+[reliability plan and review-driven next priorities](RELIABILITY-PLAN.md).
+Recovery-key rotation/revocation leads the remaining security work.
+
 ## Next — additional organization
 
 - Manual drag ordering with equivalent keyboard controls; the native board and

@@ -59,7 +59,8 @@ those archives. Permanent removal is explicitly confirmed in native HTML forms.
 
 ## Compatible rollback
 
-`--storage-version` reports 3. Deployment compares the previous and new reader
+The historical revision 3 reader reports 3; the current reader reports 4 (see
+[the V4 contract](STORAGE-V4.md)). Deployment compares the previous and new reader
 revisions. Equal revisions retain planner state directly. Different revisions
 preserve a private complete recovery copy and use the new native `--downgrade`
 converter to write V1 live snapshots before installing an older binary. Metadata,
