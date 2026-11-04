@@ -43,7 +43,7 @@ revocations; operator documentation must say so explicitly.
 - [x] Native offline policy-preserving restore; safe downgrade refusal.
 - [x] Isolated tests: stale/concurrent writers, replay, failure, backup/restore,
   both key lengths, revoked endpoints, large-import header gate and no key leaks.
-- [ ] Desktop/mobile/no-JavaScript/light-dark axe checks, green actual CI,
+- [x] Desktop/mobile/no-JavaScript/light-dark axe checks, green actual CI,
   exact sandbox rehearsal, scoped deployment and fresh-workspace HTTPS probes.
 
 ## Threat review
@@ -81,5 +81,13 @@ No new compliance claim or notification deadline is introduced.
   was retained by merging newer policy over the older archive. The new key
   loaded the restored planner; the former key returned 410 after sandbox restart.
   All three unsafe downgrade modes refused V5 without changing task snapshots.
-- GitHub CI and scoped public production evidence will be recorded in RELEASE.md
-  after successful rollout. Existing user data must remain byte-identical.
+- Functional commit 3066086 passed GitHub Actions 41810661682; one existing
+  desktop conflict test needed a retry. Subsequent test changes explicitly wait
+  for the pinned old edit form, the other tab's committed redirect and the 412
+  response. CI now rejects tests that pass only on retry rather than hiding them.
+- Scoped rollout passed direct/public HTTPS rotation and lost-response probes.
+  Public Pixel 5 Chromium without JavaScript passed candidate download before
+  confirmation, revocation of another browser and full-key restore. Original
+  production task-file hashes/count matched the private pre-release baseline.
+  The real backup service completed; its archive passed independent extraction,
+  hash comparison and native storage validation. See RELEASE.md for details.

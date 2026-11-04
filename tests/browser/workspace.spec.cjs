@@ -53,7 +53,10 @@ test('public content, metadata and mobile layout', async ({ page }, info) => {
 async function menuAction(page, title, action) {
   const row = page.locator('#task-list > li').filter({ hasText: title });
   await row.locator('summary').click();
-  await row.getByRole('link', { name: action, exact: true }).click();
+  const link = row.getByRole('link', { name: action, exact: true });
+  const destination = new URL(await link.getAttribute('href'), page.url()).href;
+  await link.click();
+  await expect(page).toHaveURL(destination);
 }
 
 test('native task lifecycle, server search, filters, sorting and progress', async ({ page }, info) => {
@@ -517,6 +520,7 @@ test('two native tabs preserve a stale edit and allow an explicit reviewed retry
     await first.getByRole('button', { name: 'Find your focus' }).click();
     await add(first, 'Original task');
     await menuAction(first, 'Original task', 'Edit');
+    await expect(first.getByRole('textbox', { name: 'Task title', exact: true })).toHaveValue('Original task');
     await second.goto(first.url());
     await first.getByRole('textbox', { name: 'Task title', exact: true }).fill('Saved in first tab');
     await first.getByRole('button', { name: 'Save changes', exact: true }).click();
@@ -554,13 +558,20 @@ test('conflict drafts meet automated WCAG checks in both themes and preserve tex
   await open(page);
   await add(page, 'Original task');
   await menuAction(page, 'Original task', 'Edit');
+  // Pin the old form before opening/mutating the same workspace in another tab.
+  await expect(page.getByRole('textbox', { name: 'Task title', exact: true })).toHaveValue('Original task');
   const other = await page.context().newPage();
   await other.goto(page.url());
   await other.getByRole('textbox', { name: 'Task title', exact: true }).fill('Other tab');
   await other.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(other).toHaveURL(base+'/app');
+  await expect(other.locator('.task-title')).toHaveText('Other tab');
   await other.close();
   await page.getByRole('textbox', { name: 'Task title', exact: true }).fill('Ședință <draft>');
+  const conflict = page.waitForResponse(response => response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  expect((await conflict).status()).toBe(412);
+  await expect(page.getByRole('heading', { name: 'Workspace changed', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Task title', exact: true })).toHaveValue('Ședință <draft>');
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);

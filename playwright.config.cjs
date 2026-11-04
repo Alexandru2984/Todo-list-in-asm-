@@ -5,6 +5,7 @@ module.exports = defineConfig({
   workers: 1,
   timeout: 30000,
   retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.CI,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: { trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [

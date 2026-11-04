@@ -89,6 +89,15 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
   (**44 tests**) for functional release commit **761f3af**. Earlier per-stage
   commits also have successful runs. The original dark-theme CI contrast failure
   was repaired without disabling axe checks.
+- V5 functional commit **3066086** passed both jobs in
+  [run 41810661682](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41810661682):
+  **198 native tests**, **47 browser cases on first attempt and one existing
+  desktop conflict case on retry**. All four new rotation browser cases passed
+  first attempt. The follow-up harness waits explicitly for edit/commit/conflict
+  transitions and fails CI on any flaky retry; see current main workflow results.
+  The original timeout did not reproduce in 12 local desktop repeats. After
+  strengthening synchronization/assertions, both conflict flows passed 16 local
+  desktop/mobile executions with CI retry-failure enforcement enabled.
 - The exact production service sandbox passed a fresh-workspace rehearsal on a
   spare loopback port. NoNewPrivileges and seccomp were active. An independently
   extracted native archive retained planner metadata/workflow state through a
@@ -97,6 +106,24 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Production verification
 
+- V5 rollout succeeded with private rollback snapshot
+  `/var/backups/asm-todo/releases/20261104T095738Z`. Both direct and public HTTPS
+  probes passed key preparation/download, atomic rotation, revoked-key rejection,
+  exact lost-response recovery without a second revision, and all prior planner
+  workflows. Only each probe's fresh stable workspace ID was removed.
+- Public Pixel 5 Chromium with JavaScript disabled passed saving the candidate
+  before confirmation, secure rotated cookie, revocation in another browser,
+  forgetting that inactive session, full 64-character recovery, private HTML and
+  responsive widths 320/390/768/1440. No existing user's key was rotated.
+- V5 post-release verification confirmed unchanged original task-file SHA-256
+  hashes/workspace count, an actual successful backup service run, native archive
+  verification, independent extraction/hash comparison and isolated native
+  validation. The deployed binary matches the tested build; service/timer remain
+  active, NoNewPrivileges/seccomp enabled, with zero service restarts recorded.
+- An exact-unit rehearsal additionally retained a second rotation's policy over
+  a first-rotation archive, then rejected its revoked key after sandbox restart.
+  All three old-reader downgrade modes refused V5 without modifying snapshots.
+  The actual previous V4 production reader also accepted an unchanged V4 fixture.
 - deploy/apply.sh created a private binary/config/data rollback snapshot at
   /var/backups/asm-todo/releases/20261104T022733Z, stopped ASM traffic, validated
   existing storage without rewriting tasks, atomically installed the binaries,

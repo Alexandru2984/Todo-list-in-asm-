@@ -22,9 +22,9 @@ Every completed stage receives a separate owner-attributed commit.
 
 ## Review-driven next stages
 
-1. Recovery-key rotation/revocation: transactional transfer, durable old-key
-   invalidation, response-loss recovery and archive/restore semantics. Cookie-only
-   logout remains separate. Resolve active writers/locks before implementing.
+1. Recovery-key rotation/revocation: delivered by the subsequent native V5 stage;
+   see [its completed contract and checks](KEY-ROTATION-PLAN.md) and
+   [restore/rollback semantics](STORAGE-V5.md). Cookie-only logout stays separate.
 2. Operational resilience: verify the actual trusted proxy/IP chain, real alert
    delivery, off-host encrypted copies and complete-VPS/single-workspace restore.
    Reuse an existing destination if available; do not invent credentials/vendors.
@@ -46,8 +46,8 @@ Every completed stage receives a separate owner-attributed commit.
 The accept loop's unconditional retry after errors and lock-file creation on
 GET were confirmed in source. Their exploitation severity depends on deployment
 limits; no remote code execution, SQL injection or exploitable overflow is
-claimed. Non-PIE/manual buffers, absent revocation, local-only backups and absent
-external alerts remain documented limitations until actually addressed.
+claimed. Non-PIE/manual buffers, local-only backups and absent external alerts
+remain limitations. Revocation was subsequently addressed by the V5 stage.
 
 ## CISO review
 
@@ -115,7 +115,7 @@ validation in isolated storage. Service/timer remain active; deployed binary
 matches the verified build, with NoNewPrivileges and seccomp active.
 
 The supplied review is incorporated in the next-stage list above. Recovery-key
-rotation/revocation is still the next unresolved product security priority.
+rotation/revocation was subsequently delivered in [the V5 stage](STORAGE-V5.md).
 Off-host destination/alert delivery, filesystem-level quota, continuous fuzzing,
 PIE research and benchmarks remain separate work; this release does not claim
 those controls or a certified/fully finished 1.0 security posture.

@@ -20,6 +20,9 @@ using the native POST `/rotation-key` download or copy the complete value, check
 the saved-key acknowledgement, then confirm POST `/rotate-key`. The confirmation
 requires the normal `_state` / `_request` pair and existing origin checks.
 Candidates must be exactly 64 lowercase hex characters scoped to this workspace.
+API clients must use a cryptographically secure random 128-bit suffix; hex format
+validation alone does not prove entropy. Use the native prepared candidate rather
+than choosing a memorable secret.
 
 The server revalidates the credential under the same exclusive lock used by task
 writers. It commits the new policy, revision, request receipt and rotation event
