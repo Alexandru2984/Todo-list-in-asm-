@@ -71,7 +71,8 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Verification
 
-- **222 local integration tests passed**: encrypted offsite/credential isolation,
+- **237 local integration tests passed**: native monitoring/notification policy,
+  encrypted offsite/credential isolation,
   key rotation/revocation/restore,
   protocol, storage/revisions, recurrence,
   metadata/relationships, history, query/layout/statistics, exports/imports, native
@@ -109,6 +110,15 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Production verification
 
+- Native monitoring commit **7daea1f** passed
+  [Actions 41907601527](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41907601527).
+  Exact systemd probes and the existing relay passed isolated encrypted-dummy-
+  credential tests for privacy, duplicate suppression, recovery and failed
+  delivery, with all notification traffic confined to a loopback fake provider.
+  Production HTTP/HTTPS/capacity/freshness checks passed and timers are active;
+  live task hashes/count, web binary and process start were unchanged. External
+  notification delivery remains behind explicit opt-in, pending operator choice.
+  See [monitoring contract and evidence](MONITORING.md).
 - Offsite commit **d962625** passed [Actions 41817846977](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41817846977):
   **222 native/integration tests and 48 browser cases**, without flaky retries.
   Real production encrypted upload/readback succeeded through a dedicated Unix

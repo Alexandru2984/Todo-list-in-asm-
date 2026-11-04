@@ -136,3 +136,16 @@ secrets into payloads. Duplicate incidents were throttled; one recovery cleared
 state; healthy repeats stayed quiet; rejected provider delivery created no success
 marker. Egress was restricted to a loopback fake provider throughout. Production
 credentials/recipients were not used, and the shared relay file remained unchanged.
+
+Functional commit 7daea1f passed [Actions 41907601527](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41907601527).
+Read-only production checks passed for loopback HTTP, public HTTPS, all three
+capacity targets and offsite freshness. All four timers are enabled/active.
+Live task-file hashes/count, web binary and web process start time matched the
+private pre-install baseline. The installed probe matches the tested build.
+Rollback files are private at
+/var/backups/asm-todo/monitoring-releases/20261104T203629Z.
+
+At this acceptance point delivery remained gated: the activation marker was
+absent and production notification state was empty. External activation/test
+requires the operator's pending explicit choice. No live provider-delivery claim
+is made from mock-provider tests or a successful local health check.
