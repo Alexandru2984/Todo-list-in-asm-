@@ -87,6 +87,18 @@ remains non-PIE, bearer-key access has no revocation, aggregate anonymous disk
 usage lacks a quota, and off-host encrypted backups/external alerts still require
 operator configuration. No production fuzzing or load test was performed.
 
+## V5/offsite status — 2026-11-04
+
+Earlier references to absent revocation/off-host copies describe earlier releases.
+Native V5 rotation/revocation is delivered. The subsequent offsite stage now uses
+the existing crypt remote with isolated credentials, unprivileged transport,
+downloaded byte/native verification and hourly freshness receipts. Actual cloud
+restore/hash checks passed without changing live tasks or restarting the website.
+See [the offsite contract](OFFSITE.md) for evidence and limits. Independent secret
+escrow, remote retention, external alert delivery, OS filesystem quotas, continuous
+fuzzing and PIE remain unverified/unimplemented controls; no certification follows
+from these tests. The provider token retains its existing scope.
+
 ## V4 and admission follow-up — 2026-11-04
 
 The external review correctly separated historical issues from remaining risks.

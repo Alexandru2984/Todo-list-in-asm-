@@ -116,5 +116,26 @@ escrowed secrets are unverified. The operational response walkthrough is above.
   tampered ciphertext, stale health and V5 restore retaining newer revocation.
 - [x] Exact systemd transport/health sandbox using a disposable Unix identity.
   Transport could not read source archives; tampering did not advance success.
-- [ ] Final full suite/CI, actual cloud upload, independent remote restore/hash
+- [x] Final full suite/CI, actual cloud upload, independent remote restore/hash
   checks and unchanged live task-file proof.
+
+Production acceptance: functional commit d962625 passed both jobs in
+[Actions 41817846977](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41817846977):
+222 integration tests and 48 browser cases, with no flaky retries. The actual
+service uploaded into the existing crypt namespace, downloaded/compared/verified
+the archive and reported success. Starting only asm-backup.service then produced
+another fresh verified receipt through OnSuccess, without a manual worker start.
+
+An independent provider download matched the source archive SHA-256; independent
+TAR extraction/task-file hashes and isolated native storage validation passed.
+Live task-file hashes/count, web binary and web process start time were unchanged.
+Transport cannot read live/source directories. Isolated configuration contains
+only Drive and crypt, remains private, and preserves refreshed tokens; original
+configuration ownership remains correct. Both freshness and backup timers are
+enabled; worker/health units succeeded. Source archive history remains local,
+and remote history starts with this rollout. Private installation rollback copy:
+/var/backups/asm-todo/offsite-releases/20261104T144938Z.
+
+Website releases request offsite dispatch asynchronously when installed. A
+dispatch rejection is reported separately and cannot roll back a healthy web
+release with a verified local backup. Worker/health failures remain visible.

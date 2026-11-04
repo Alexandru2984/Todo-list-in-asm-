@@ -3,6 +3,8 @@
 The release is live at https://asm.micutu.com/. Task requests, imports, queries,
 calendar/board rendering, SVG statistics, storage maintenance and scheduled
 backups run in static x86_64 NASM binaries linked with ld and raw Linux syscalls.
+Optional off-host encryption/transport invokes the installed rclone crypt backend;
+selection, staging, full readback comparison and health policy remain native ASM.
 HTML/CSS present the results. Optional browser JavaScript remains 75 lines; no
 framework, interpreter or database runtime was added.
 
@@ -69,7 +71,8 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Verification
 
-- **198 local integration tests passed**: key rotation/revocation/restore,
+- **222 local integration tests passed**: encrypted offsite/credential isolation,
+  key rotation/revocation/restore,
   protocol, storage/revisions, recurrence,
   metadata/relationships, history, query/layout/statistics, exports/imports, native
   backup/legacy archive compatibility, deployment probes, real isolated nginx
@@ -106,6 +109,15 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Production verification
 
+- Offsite commit **d962625** passed [Actions 41817846977](https://github.com/Alexandru2984/Todo-list-in-asm-/actions/runs/41817846977):
+  **222 native/integration tests and 48 browser cases**, without flaky retries.
+  Real production encrypted upload/readback succeeded through a dedicated Unix
+  transport identity and isolated crypt config. An independent cloud download
+  matched source SHA-256 and passed independent extraction/task hashes plus native
+  validation. A second local backup automatically triggered verified replication.
+  Website data hashes/count, binary and process start time remained unchanged.
+  The local backup and hourly freshness timers are enabled; worker/health results
+  are successful. See [offsite contract, escrow and retention limits](OFFSITE.md).
 - V5 rollout succeeded with private rollback snapshot
   `/var/backups/asm-todo/releases/20261104T095738Z`. Both direct and public HTTPS
   probes passed key preparation/download, atomic rotation, revoked-key rejection,

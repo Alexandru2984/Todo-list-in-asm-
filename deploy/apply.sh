@@ -138,7 +138,9 @@ systemctl daemon-reload
 systemctl enable --now asm-backup.timer
 if [[ -f /etc/systemd/system/asm-backup.service.d/offsite.conf && -f /etc/systemd/system/asm-offsite.service ]]; then
     # The direct native archive above bypasses the backup unit's OnSuccess hook.
-    systemctl start --no-block asm-offsite.service
+    if ! systemctl start --no-block asm-offsite.service; then
+        echo 'Offsite dispatch failed; verified local backup retained. Check asm-offsite.service and freshness health separately.' >&2
+    fi
 fi
 SUCCESS=1
 printf 'ASM release deployed. Rollback snapshot: %s\n' "$BACKUP_DIR"
