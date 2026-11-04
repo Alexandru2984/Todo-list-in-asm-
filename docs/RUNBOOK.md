@@ -57,11 +57,12 @@ df -h /var/lib/asm-todo /var/backups/asm-todo
 df -i /var/lib/asm-todo
 ```
 
-Configure operator alerts for health failure twice over a minute; service/backup
-failure; repeated 5xx; sustained 429s; disk free below 15%; inode free below 10%;
-and a backup older than 26 hours. These are recommended rules, not a claim that
-notification delivery/on-call is configured. Current MTTD is unmeasured.
-No task text, cookie headers or recovery keys belong in alert payloads.
+Installed checks cover loopback/public health, backup failure/freshness, disk
+space below 15% or 1 GiB and inode free space below 10%. Notifications use the
+approved existing operator channel. Repeated 5xx, sustained 429s and restart-rate
+telemetry remain recommendations for a later stage. End-to-end incident MTTD
+and staffed on-call coverage are unmeasured/unverified. No task text, cookie
+headers or recovery keys belong in alert payloads.
 
 The native monitoring stage implements exact health/capacity checks and private
 backup failure/recovery hooks. The operator approved external delivery, and the
