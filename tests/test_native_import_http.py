@@ -43,7 +43,7 @@ class NativeImportHTTPTests(unittest.TestCase):
         self.cookie=self.server.session();self.path=self.server.file(self.cookie)
 
     def post(self,path,fields,**kwargs):
-        return self.server.request('POST',path,fields,cookie=self.cookie,**kwargs)
+        return self.server.mutate(path,fields,cookie=self.cookie,**kwargs)
 
     def export(self,cookie=None,path='/export.json'):
         status,_,body=self.server.request('GET',path,cookie=cookie or self.cookie)

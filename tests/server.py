@@ -66,6 +66,16 @@ class Server:
         finally:
             conn.close()
 
+    def mutate(self, path, data=None, cookie=None, headers=None):
+        # Real protocol client: never overwrite an explicitly supplied stale pair.
+        if isinstance(data, dict) and cookie and not any(key in data for key in ['_state', '_request']):
+            status, _, body = self.request('GET', '/state.json', cookie=cookie)
+            if status == 200:
+                import json
+                state = json.loads(body)
+                data = dict(data, _state=state['state'], _request=state['operationId'])
+        return self.request('POST', path, data, cookie=cookie, headers=headers)
+
     def session(self):
         status, headers, _ = self.request('POST', '/start', '')
         assert status == 303, status

@@ -32,7 +32,9 @@ Corrupt, oversized or unreadable files return an error and are preserved.
 The `#next=N` snapshot header preserves monotonically increasing IDs. Legacy
 record-only files remain readable. A failed write before rename preserves the
 previous snapshot. A failure after rename or loss of the response can be
-ambiguous: reload before retrying; request idempotency keys are a future feature.
+ambiguous. Protected V4 requests retain successful operation IDs atomically, so
+clients can retry the exact original body/pair. Legacy API writes before V4
+activation lack this protection. See [the V4 contract](STORAGE-V4.md).
 
 Imports use native bounded JSON/CSV parsers, strict schemas/types/UTF-8, exact
 64-bit IDs, paired surrogate decoding and combined parent/dependency cycle checks.
@@ -88,3 +90,7 @@ access key. Task data only enters escaped TEXT values; properties are fixed and
 lines are folded on UTF-8 character boundaries. Stable event UIDs use the existing
 native SHA-256 implementation over a domain-separated workspace/task tuple.
 This is a private attachment, not a public capability URL or calendar feed.
+
+Private HTML forms now carry bounded workspace preconditions/operation IDs.
+V4 mutations require both fields; stale/different-body key reuse returns 412,
+missing fields return 428, and exact recent replays do not write again.

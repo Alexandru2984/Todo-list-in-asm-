@@ -4,6 +4,7 @@ Allow: /app.js
 Disallow: /app
 Disallow: /export
 Disallow: /recovery
+Disallow: /state.json
 Disallow: /stats.svg
 Disallow: /import
 Disallow: /board/

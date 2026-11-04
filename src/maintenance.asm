@@ -1,9 +1,9 @@
 %include "src/defs.inc"
 DEFAULT ABS
 extern current_uid, load_todos, lock_user_file, unlock_user_file
-extern storage_version, save_legacy_snapshot
+extern storage_version, save_legacy_snapshot, save_v3_snapshot
 
-global downgrade_storage, check_storage
+global downgrade_storage, downgrade_v3, check_storage
 section .data
     directory db 'data',0
     write_mode dq 0
@@ -18,6 +18,9 @@ check_storage:
     jmp maintenance_run
 downgrade_storage:
     mov edi,1
+    jmp maintenance_run
+downgrade_v3:
+    mov edi,2
 maintenance_run:
     mov [write_mode],rdi
     push rbx
@@ -81,9 +84,17 @@ maintenance_run:
     js .unlock_bad
     test r13,r13
     jz .unlock
+    cmp qword [write_mode],2
+    jne .legacy
+    cmp qword [storage_version],4
+    jb .unlock
+    call save_v3_snapshot
+    jmp .saved
+.legacy:
     cmp qword [storage_version],2
     jb .unlock
     call save_legacy_snapshot
+.saved:
     test rax,rax
     js .unlock_bad
 .unlock:

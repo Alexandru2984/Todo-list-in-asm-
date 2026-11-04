@@ -507,3 +507,64 @@ test('dated tasks download as a private calendar snapshot without JavaScript', a
     }
   } finally { await context.close(); }
 });
+
+test('two native tabs preserve a stale edit and allow an explicit reviewed retry', async ({ browser, page }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const first = await context.newPage();
+  const second = await context.newPage();
+  try {
+    await first.goto(base);
+    await first.getByRole('button', { name: 'Find your focus' }).click();
+    await add(first, 'Original task');
+    await menuAction(first, 'Original task', 'Edit');
+    await second.goto(first.url());
+    await first.getByRole('textbox', { name: 'Task title', exact: true }).fill('Saved in first tab');
+    await first.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await second.getByRole('textbox', { name: 'Task title', exact: true }).fill('Draft from second tab');
+    const response = second.waitForResponse(response => response.request().method() === 'POST');
+    await second.getByRole('button', { name: 'Save changes', exact: true }).click();
+    expect((await response).status()).toBe(412);
+    await expect(second.getByRole('heading', { name: 'Workspace changed', exact: true })).toBeVisible();
+    await expect(second.getByRole('textbox', { name: 'Task title', exact: true })).toHaveValue('Draft from second tab');
+    await first.reload();
+    await expect(first.locator('.task-title')).toHaveText('Saved in first tab');
+    await second.getByRole('button', { name: 'Try again', exact: true }).click();
+    await expect(second.locator('.task-title')).toHaveText('Draft from second tab');
+  } finally { await context.close(); }
+});
+
+test('retrying the exact native form POST never duplicates its task', async ({ browser, page }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage();
+  try {
+    await native.goto(base);
+    await native.getByRole('button', { name: 'Find your focus' }).click();
+    const requestEvent = native.waitForRequest(request => request.method() === 'POST');
+    await add(native, 'Exactly one task');
+    const request = await requestEvent;
+    const result = await context.request.post(request.url(), { data: request.postData(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, maxRedirects: 0 });
+    expect(result.status()).toBe(303);
+    await native.reload();
+    await expect(native.locator('#task-list > li')).toHaveCount(1);
+    await expect(native.locator('.task-title')).toHaveText('Exactly one task');
+  } finally { await context.close(); }
+});
+
+test('conflict drafts meet automated WCAG checks in both themes and preserve text', async ({ page }) => {
+  await open(page);
+  await add(page, 'Original task');
+  await menuAction(page, 'Original task', 'Edit');
+  const other = await page.context().newPage();
+  await other.goto(page.url());
+  await other.getByRole('textbox', { name: 'Task title', exact: true }).fill('Other tab');
+  await other.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await other.close();
+  await page.getByRole('textbox', { name: 'Task title', exact: true }).fill('Ședință <draft>');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Task title', exact: true })).toHaveValue('Ședință <draft>');
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(result.violations).toEqual([]);
+  }
+});

@@ -141,9 +141,14 @@ With the service stopped, validate all workspace files without rewriting them:
 sudo -u asm-todo sh -c 'cd /var/lib/asm-todo && /srv/canary/asm.micutu.com/app/bin/server --check-storage'
 ```
 
-Current snapshots are revision 3. Never copy a previous binary over live planner
+Protected snapshots are revision 4; V1/V2/V3 remain readable. Never copy a previous binary over live planner
 state without comparing --storage-version. The deployment script preserves a
 complete private recovery copy and uses the new native --downgrade converter
 before an older reader starts. Conversion retains V1 live fields; metadata,
 trash/history remain in that private copy. See [the rollback contract](STORAGE-HISTORY.md).
 Native backup retention does not prune these operator-managed release copies.
+
+V4 rollback to reader 3 uses --downgrade-v3 after the same offline preflight/private
+copy. It preserves metadata/history/metrics while dropping request receipts.
+Older readers use the conservative V1 conversion. Never reuse stale browser
+forms after rollback/restore; reload and preserve a draft before retrying.

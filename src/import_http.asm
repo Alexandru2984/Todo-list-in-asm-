@@ -6,8 +6,11 @@ extern import_json, import_csv, import_lines, import_count, import_live, import_
 extern import_apply, import_capacity, lock_user_file, unlock_user_file, load_todos
 extern todo_count, res_buf, send_private_html, redirect_app, priority_names
 
+extern guard_field, guard_fields_finish, guard_preview
 global handle_import
 section .data
+    key_guard_state db '_state',0
+    key_guard_request db '_request',0
     key_payload db 'payload',0
     key_format db 'format',0
     key_mode db 'mode',0
@@ -22,6 +25,7 @@ section .data
     modes dq merge,replace
     preview_head db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light dark"><title>Review import — ASM TODO</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head><body data-page="import"><main class="native-import"><a href="/app#import-panel">Back to workspace</a><h1>Review your import</h1>',0
     capacity_notice db '<p class="notice" role="alert">This workspace cannot fit the import or has exhausted its task IDs. Adjust the file or workspace, then preview again. Your payload is preserved below.</p>',0
+    stale_notice db '<p class="notice" role="alert">Workspace changed since this form was opened. This import was not applied. Check the current workspace, then review this preview before confirming again. Your payload is preserved below.</p>',0
     storage_notice db '<p class="notice" role="alert">Saving was not confirmed. Check your workspace before retrying: importing twice can create duplicates. Your payload is preserved below.</p>',0
     summary_open db '<p><strong data-import-live="',0
     summary_live db '">',0
@@ -48,6 +52,7 @@ section .bss
     detected_format resq 1
     selected_mode resq 1
     form_flags resq 1
+    guard_value resb 97
     small_value resb 32
     date_buf resb 24
 section .text
@@ -180,6 +185,16 @@ parse_import_form:
     test rax,rax
     jz .mode
     mov rdi,rbx
+    mov rsi,key_guard_state
+    call strcmp
+    test rax,rax
+    jz .guard
+    mov rdi,rbx
+    mov rsi,key_guard_request
+    call strcmp
+    test rax,rax
+    jz .guard
+    mov rdi,rbx
     mov rsi,key_confirmed
     call strcmp
     test rax,rax
@@ -192,6 +207,19 @@ parse_import_form:
     js .done
     cmp word [small_value],'1'
     jne .bad
+    jmp .next
+.guard:
+    mov rdi,r14
+    mov rsi,guard_value
+    mov edx,96
+    call decode_import_value
+    test rax,rax
+    js .done
+    mov rdi,rbx
+    mov rsi,guard_value
+    call guard_field
+    test rax,rax
+    js .done
     jmp .next
 .payload:
     test qword [form_flags],1
@@ -257,7 +285,7 @@ parse_import_form:
     cmp qword [selected_mode],0
     jne .bad
 .valid:
-    xor eax,eax
+    call guard_fields_finish
     jmp .done
 .bad:
     mov rax,-400
@@ -339,6 +367,10 @@ handle_import:
     call parse_payload
     test rax,rax
     js .done
+    test r13,r13
+    jnz .lock
+    call guard_preview
+.lock:
     call lock_user_file
     test rax,rax
     js .done
@@ -368,6 +400,8 @@ handle_import:
     xor eax,eax
     jmp .done
 .retry:
+    cmp r14,-412
+    je .retry_preview
     cmp r14,-409
     je .retry_preview
     cmp r14,-507
@@ -385,7 +419,10 @@ handle_import:
     push rax
     call unlock_user_file
     pop rax
-    jmp .done
+    cmp rax,-412
+    jne .done
+    mov r14,rax
+    jmp .retry
 .bad:
     mov rax,-400
 .done:
@@ -401,11 +438,17 @@ render_preview:
     mov rdi,res_buf
     mov rsi,preview_head
     call copy_string
+    cmp r15,412
+    je .stale
     cmp r15,409
     je .capacity
     cmp r15,507
     jne .summary
     mov rsi,storage_notice
+    call copy_string
+    jmp .summary
+.stale:
+    mov rsi,stale_notice
     call copy_string
     jmp .summary
 .capacity:

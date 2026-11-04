@@ -8,6 +8,7 @@ extern request_cookie, request_origin, request_host, request_site
 
 global handle_request, current_uid, send_error, copy_string, html_escape, emit_number
 extern handle_import, is_import_path
+extern guard_begin, guard_field, guard_fields_finish, guard_finish, guard_html, guard_json
 global redirect_app
 global authorize_import_headers, send_private_html, res_buf
 global decode_value, decode_buf, decode_stripped
@@ -58,6 +59,7 @@ section .data
     same_origin db 'same-origin',0
     fetch_none db 'none',0
     stats_path db '/stats.svg',0
+    state_path db '/state.json',0
     export_json_path db '/export.json',0
     export_csv_path db '/export.csv',0
     export_calendar_path db '/export.ics',0
@@ -156,6 +158,13 @@ section .data
     status_411 db 'HTTP/1.1 411 Length Required',13,10,0
     error_411 db 'Content-Length is required.',10
     error_411_len equ $-error_411
+    status_428 db 'HTTP/1.1 428 Precondition Required',13,10,0
+    error_428 db 'Reload the workspace before changing tasks. Clients must fetch /state.json and send _state and _request with each change.',10
+    error_428_len equ $-error_428
+    status_412 db 'HTTP/1.1 412 Precondition Failed',13,10,0
+    conflict_draft db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Review your changes — ASM TODO</title><link rel="stylesheet" href="/app.css"></head><body><main class="native-action"><h1>Workspace changed</h1><p>This draft was not applied. Another change was saved, or this request key was already used with different contents. Check the current workspace before applying your reviewed draft.</p><p><a href="/app" target="_blank" rel="noopener">Open current workspace</a></p><form method="post" action="',0
+    error_412 db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workspace changed — ASM TODO</title><link rel="stylesheet" href="/app.css"></head><body><main class="native-action"><h1>Workspace changed</h1><p>Your request was not applied. Reload the workspace to review the latest changes before trying again.</p><a href="/app" class="primary-button">Open current workspace</a></main></body></html>'
+    error_412_len equ $-error_412
     status_413 db 'HTTP/1.1 413 Content Too Large',13,10,0
     error_413 db 'Ordinary requests allow 4095 bytes. Imports allow 7 MiB encoded requests and 2 MiB decoded payloads.',10
     error_413_len equ $-error_413
@@ -236,6 +245,23 @@ respond:
     mov r13,rdx
     mov r14,rcx
     mov r15,r8
+    cmp r12,res_buf
+    jne .headers
+    cmp r15,mime_html
+    jne .headers
+    mov rdi,r12
+    mov rsi,r13
+    call guard_html
+    test rax,rax
+    js .guard_error
+    mov r13,rax
+    jmp .headers
+.guard_error:
+    mov r12,error_500
+    mov r13,error_500_len
+    mov r14,status_500
+    mov r15,mime_text
+.headers:
     mov rdi,hdr_buf
     mov rsi,r14
     call copy_string
@@ -291,12 +317,16 @@ send_error:
     je .e409
     cmp r10,411
     je .e411
+    cmp r10,412
+    je .e412
     cmp r10,413
     je .e413
     cmp r10,415
     je .e415
     cmp r10,417
     je .e417
+    cmp r10,428
+    je .e428
     cmp r10,422
     je .e422
     cmp r10,500
@@ -343,6 +373,13 @@ send_error:
     mov edx,error_411_len
     mov rcx,status_411
     jmp .send
+.e412:
+    mov rsi,error_412
+    mov edx,error_412_len
+    mov rcx,status_412
+    mov r8,mime_html
+    mov r9,private_headers
+    jmp respond
 .e413:
     mov rsi,error_413
     mov edx,error_413_len
@@ -357,6 +394,11 @@ send_error:
     mov rsi,error_417
     mov edx,error_417_len
     mov rcx,status_417
+    jmp .send
+.e428:
+    mov rsi,error_428
+    mov edx,error_428_len
+    mov rcx,status_428
     jmp .send
 .e422:
     mov rsi,error_422
@@ -690,6 +732,12 @@ parse_form:
     jne .bad
     mov rdi,rbx
     mov rsi,decode_buf
+    call guard_field
+    test rax,rax
+    js .done
+    jnz .next
+    mov rdi,rbx
+    mov rsi,decode_buf
     call parse_property
     test rax,rax
     js .done
@@ -743,7 +791,7 @@ parse_form:
     mov rbx,r13
     jmp .field
 .ok:
-    xor eax,eax
+    call guard_fields_finish
     jmp .done
 .invalid_title:
     mov rax,-422
@@ -804,6 +852,14 @@ session_redirect:
     mov r9,extra_buf
     jmp redirect
 redirect_app:
+    call guard_finish
+    test rax,rax
+    jns .ready
+    neg rax
+    mov rdi,rax
+    mov rsi,r12
+    jmp send_error
+.ready:
     mov r9,app_location
     cmp qword [return_board],0
     je redirect
@@ -821,6 +877,7 @@ handle_request:
     push r12
     push r13
     mov r12,rdi
+    call guard_begin
     call parse_cookie
     test rax,rax
     js .error
@@ -849,6 +906,11 @@ handle_request:
     call is_import_path
     test rax,rax
     jnz .method
+    mov rdi,request_path
+    mov rsi,state_path
+    call strcmp
+    test rax,rax
+    jz .get_state
     mov rdi,request_path
     mov rsi,stats_path
     call strcmp
@@ -1118,6 +1180,9 @@ handle_request:
     test rax,rax
     jz .post_clear
     jmp .missing
+.get_state:
+    mov r13,guard_json
+    jmp .get_export
 .get_stats:
     mov r13,export_stats_svg
     jmp .get_export
@@ -1153,6 +1218,11 @@ handle_request:
     mov r9,json_headers
     cmp r13,export_json
     je .export_send
+    cmp r13,guard_json
+    jne .other_export
+    mov r9,private_headers
+    jmp .export_send
+.other_export:
     mov r8,mime_svg
     mov r9,private_headers
     cmp r13,export_stats_svg
@@ -1526,6 +1596,8 @@ handle_request:
 .conflict:
     mov rax,-409
 .error:
+    cmp rax,-208
+    je .replayed
     cmp qword [request_method],2
     jne .plain_error
     test qword [form_flags],1
@@ -1533,11 +1605,17 @@ handle_request:
     cmp rax,-507
     je .draft
     cmp rax,-409
+    je .draft
+    cmp rax,-412
     jne .plain_error
 .draft:
     push rax
     mov rdi,res_buf
     mov rsi,draft_open
+    cmp rax,-412
+    jne .draft_heading
+    mov rsi,conflict_draft
+.draft_heading:
     call copy_string
     call emit_mutation_prefix
     mov rsi,draft_add
@@ -1567,6 +1645,9 @@ handle_request:
     mov rdx,rdi
     sub rdx,res_buf
     pop rax
+    mov rcx,status_412
+    cmp rax,-412
+    je .draft_send
     mov rcx,status_507
     cmp rax,-409
     jne .draft_send
@@ -1577,6 +1658,9 @@ handle_request:
     mov r8,mime_html
     mov r9,private_headers
     call respond
+    jmp .done
+.replayed:
+    call redirect_app
     jmp .done
 .plain_error:
     neg rax
@@ -1893,6 +1977,8 @@ authorize_import_headers:
 
 ; fd/body/length plus numeric 200/409/507 status for a bounded native preview.
 send_private_html:
+    cmp rcx,412
+    je .stale
     cmp rcx,409
     je .conflict
     cmp rcx,507
@@ -1901,6 +1987,9 @@ send_private_html:
     jmp .send
 .conflict:
     mov rcx,status_409
+    jmp .send
+.stale:
+    mov rcx,status_412
     jmp .send
 .storage:
     mov rcx,status_507

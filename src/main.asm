@@ -4,7 +4,7 @@ DEFAULT ABS
 extern init_storage, parse_uint, validate_request, handle_request, send_error
 extern request_cap
 extern print, itoa
-extern strcmp, downgrade_storage, check_storage
+extern strcmp, downgrade_storage, downgrade_v3, check_storage
 
 global _start
 section .data
@@ -15,7 +15,8 @@ section .data
     check_ok db 'ASM TODO: storage check passed',10,0
     check_bad db 'ASM TODO: storage check failed; no workspace was rewritten',10,0
     version_arg db '--storage-version',0
-    version_text db '3',10,0
+    version_text db '4',10,0
+    downgrade_v3_arg db '--downgrade-v3',0
     downgrade_arg db '--downgrade',0
     downgrade_ok db 'ASM TODO: offline downgrade completed',10,0
     downgrade_bad db 'ASM TODO: offline downgrade failed; retain the compatible planner binary and restore the private copy',10,0
@@ -44,6 +45,11 @@ _start:
     call strcmp
     test rax,rax
     jz .version
+    mov rdi, [rsp+16]
+    mov rsi,downgrade_v3_arg
+    call strcmp
+    test rax,rax
+    jz .downgrade_v3
     mov rdi, [rsp+16]
     mov rsi,downgrade_arg
     call strcmp
@@ -208,8 +214,12 @@ _start:
     mov edi,1
     syscall
 
+.downgrade_v3:
+    call downgrade_v3
+    jmp .downgrade_result
 .downgrade:
     call downgrade_storage
+.downgrade_result:
     test rax,rax
     js .downgrade_failed
     mov rdi,downgrade_ok

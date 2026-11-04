@@ -14,7 +14,7 @@ class QuickCaptureTests(unittest.TestCase):
         self.cookie=self.server.session();self.path=self.server.file(self.cookie)
 
     def post(self,route,fields):
-        return self.server.request('POST',route,fields,cookie=self.cookie)
+        return self.server.mutate(route,fields,cookie=self.cookie)
 
     def preview(self,payload,**fields):
         return self.post('/import-preview',dict(payload=payload,format='lines',mode='merge',**fields))
@@ -72,7 +72,7 @@ class QuickCaptureTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(),before);self.path.with_suffix('.txt.tmp').rmdir()
         self.path.write_text(''.join(f'{i}|0|0|Existing\n' for i in range(1,1000)))
         before=self.path.read_bytes();self.assertEqual(self.preview('First\nSecond')[0],409)
-        self.assertEqual(self.post('/import',fields)[0],409);self.assertEqual(self.path.read_bytes(),before)
+        self.assertEqual(self.post('/import',fields)[0],412);self.assertEqual(self.path.read_bytes(),before)
         self.path.write_bytes(b'')
         status,_,body=self.preview('\n'.join('Task '+str(i) for i in range(1000)))
         self.assertEqual(status,200);self.assertEqual(Preview(body).counts['live'],1000)

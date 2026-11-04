@@ -23,6 +23,11 @@ def probe(base, cleanup_data=None):
             if remaining > 0:
                 time.sleep(remaining)
             last_post = time.monotonic()
+        if method == 'POST' and cookie and path not in ['/start', '/restore', '/forget'] and not any(key in (data or {}) for key in ['_state', '_request']):
+            state_status, _, state_body = request('GET', '/state.json')
+            assert state_status == 200, 'Private mutation protocol discovery failed'
+            state = json.loads(state_body)
+            data = dict(data or {}, _state=state['state'], _request=state['operationId'])
         connection = (http.client.HTTPSConnection if target.scheme == 'https' else http.client.HTTPConnection)(target.netloc, timeout=10)
         headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Origin': f'{target.scheme}://{target.netloc}'}
         if cookie:
@@ -117,9 +122,17 @@ def probe(base, cleanup_data=None):
         assert token.encode() not in calendar, 'Calendar exposed the workspace key'
         assert request('POST', '/undo', {})[0] == 303, 'Quick capture atomic undo failed'
         assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 1, 'Quick capture undo contents failed'
+        state = json.loads(request('GET', '/state.json')[2])
+        fields = {'title': 'Persistent replay verification', '_state': state['state'], '_request': state['operationId']}
+        assert request('POST', '/add', fields)[0] == 303, 'Guarded action failed'
+        assert request('POST', '/add', fields)[0] == 303, 'Successful replay did not return the original redirect'
+        assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 2, 'Replay duplicated a task'
+        assert request('POST', '/add', dict(fields, title='Rejected different payload'))[0] == 412, 'Reused operation key was not rejected'
+        assert request('POST', '/undo', {})[0] == 303, 'Guarded replay verification undo failed'
+        assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 1, 'Guarded replay verification changed final fixture'
         robots = request('GET', '/robots.txt')[2]
         assert b'Allow: /app.css' in robots and b'Allow: /app.js' in robots, 'Public asset crawl policy failed'
-        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, quick capture, ICS, trash/purge and edge policy')
+        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, quick capture, ICS, V4 conflicts/replay, trash/purge and edge policy')
     finally:
         # Only the fresh getrandom session created by this invocation is removed.
         if cleanup_data and token and re.fullmatch('[a-f0-9]{32}', token):

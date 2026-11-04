@@ -20,6 +20,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 - Native subtasks and up to eight prerequisites, combined cycle checks, blocked
   task view and server-enforced completion rules.
 - Native workspace undo/redo, recoverable trash and a bounded recent-changes log.
+- Native V4 conflict detection and persistent request replay protection, including
+  draft-preserving multi-tab conflicts and retries after a lost response/restart.
 - Native structured AND search for priority/status/dates/projects/tags, quoted
   phrases and exact metadata matching.
 - Native multi-task capture: paste one title per line, preview and add the entire
@@ -127,8 +129,8 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `deploy/` | Reviewed systemd/nginx configurations and deployment procedure |
 | `tools/backup.py` | Legacy .tar.gz compatibility/rollback tool; no scheduled use |
 
-Versioned snapshots preserve legacy V1/V2 reads and write revision 3 with explicit
-metadata on mutation. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
+Versioned snapshots preserve legacy V1/V2/V3 reads. Protected mutations activate
+[revision 4](docs/STORAGE-V4.md), with monotonic revisions and atomic request receipts. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
 workspace-wide undo/redo and bounded activity in the
 [revision 3 extension](docs/STORAGE-HISTORY.md). The native
 offline downgrade command supports rollback to older binaries. See the

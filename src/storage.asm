@@ -7,12 +7,14 @@ extern next_occurrence
 extern history_reset, history_parse, history_validate, history_write, undo_todos, undo_mode
 extern history_prepare, history_complete
 extern task_ready
+extern guard_storage_reset, guard_hash_state, guard_parse, guard_validate, guard_check
+extern guard_presave, guard_write
 
 global check_regular
 global next_id
 global todos, todo_count, lookup_array, save_snapshot, format_line, line_buf
 global find_todo, duplicate_todo
-global find_any_todo, split_field, storage_version, save_legacy_snapshot
+global find_any_todo, split_field, storage_version, save_legacy_snapshot, save_v3_snapshot
 global init_storage, load_todos, append_todo, complete_todo, delete_todo
  global edit_todo, get_todo_list, get_todo_count, clear_done_todos
  global lock_user_file, unlock_user_file, reopen_todo
@@ -20,6 +22,7 @@ section .data
     data_dir db 'data',0
     prefix db 'data/todos-',0
     seq_prefix db '#next=',0
+    v4_header db '#asm=4',10
     v2_header db '#asm=3',10
     v2_header_len equ $-v2_header
     lookup_array dq todos
@@ -159,6 +162,10 @@ load_todos:
     mov qword [write_legacy],0
     mov qword [lookup_array],todos
     call history_reset
+    call guard_storage_reset
+    mov rdi,file_buf
+    xor esi,esi
+    call guard_hash_state
     call build_path
     mov eax,SYS_OPEN
     mov rdi,todo_path
@@ -196,6 +203,9 @@ load_todos:
     mov rdi,rbx
     syscall
     mov byte [file_buf+r12],0
+    mov rdi,file_buf
+    mov rsi,r12
+    call guard_hash_state
     xor r13d,r13d
 .record:
     cmp r13,r12
@@ -222,6 +232,11 @@ load_todos:
     jnz .bad
     cmp dword [r14+3],'m=2'
     je .v2
+    cmp dword [r14+3],'m=4'
+    jne .check_v3
+    mov qword [storage_version],4
+    jmp .next
+.check_v3:
     cmp dword [r14+3],'m=3'
     jne .bad
     mov qword [storage_version],3
@@ -230,8 +245,16 @@ load_todos:
     mov qword [storage_version],2
     jmp .next
 .sequence:
+    cmp qword [storage_version],4
+    jne .history
+    mov rdi,r14
+    call guard_parse
+    test rax,rax
+    js .bad
+    jnz .next
+.history:
     cmp qword [storage_version],3
-    jne .metadata
+    jb .metadata
     cmp word [r14],'U|'
     je .previous_base
     cmp word [r14],'V|'
@@ -390,7 +413,7 @@ load_todos:
     js .bad
 .legacy_count:
     cmp qword [storage_version],3
-    jne .count_current
+    jb .count_current
     call history_validate
     test rax,rax
     js .bad
@@ -423,7 +446,10 @@ load_todos:
     cmp r8,200
     ja .bad
 .ok:
-    xor eax,eax
+    call guard_validate
+    test rax,rax
+    js .bad
+    call guard_check
     jmp .done
 .close_bad:
     mov eax,SYS_CLOSE
@@ -479,6 +505,12 @@ save_snapshot:
     push rbx
     push r12
     push r13
+    cmp qword [write_legacy],0
+    jne .prepared
+    call guard_presave
+    test rax,rax
+    js .bad
+.prepared:
     call build_path
     mov rsi,todo_path
     mov rdi,tmp_path
@@ -508,6 +540,10 @@ save_snapshot:
     jne .sequence
     mov rdi,r12
     mov rsi,v2_header
+    cmp qword [storage_version],4
+    jne .header_ready
+    mov rsi,v4_header
+.header_ready:
     mov edx,v2_header_len
     call write_all
     test rax,rax
@@ -529,6 +565,15 @@ save_snapshot:
     call write_all
     test rax,rax
     js .close_bad
+    cmp qword [write_legacy],0
+    jne .records
+    cmp qword [storage_version],4
+    jne .records
+    mov rdi,r12
+    call guard_write
+    test rax,rax
+    js .close_bad
+.records:
     mov rbx,todos
     mov r13d,SLOT_MAX
 .loop:
@@ -638,6 +683,10 @@ check_regular:
     ret
 
 ; Maintenance-only: caller has stopped the HTTP service and holds the file lock.
+save_v3_snapshot:
+    mov qword [storage_version],3
+    jmp save_snapshot
+
 save_legacy_snapshot:
     mov qword [write_legacy],1
     call save_snapshot

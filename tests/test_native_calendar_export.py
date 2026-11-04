@@ -44,7 +44,7 @@ class NativeCalendarExportTests(unittest.TestCase):
         self.cookie=self.server.session();self.path=self.server.file(self.cookie)
 
     def post(self,path,fields):
-        status,_,_=self.server.request('POST',path,fields,cookie=self.cookie);self.assertEqual(status,303)
+        status,_,_=self.server.mutate(path,fields,cookie=self.cookie);self.assertEqual(status,303)
 
     def get(self,**kw):return self.server.request('GET','/export.ics',cookie=self.cookie,**kw)
 
