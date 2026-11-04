@@ -1,0 +1,40 @@
+[Unit]
+Description=Send the explicitly approved ASM TODO monitoring test
+ConditionPathExists=/etc/asm-ops/alerts-enabled
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=asm-alert
+Group=asm-alert
+StateDirectory=asm-alert-test
+StateDirectoryMode=0700
+EnvironmentFile=/etc/swift-vapor/alerts.env
+LoadCredentialEncrypted=smtp-pass:/etc/credstore.encrypted/swift-vapor-smtp-pass
+LoadCredentialEncrypted=telegram:/etc/credstore.encrypted/swift-vapor-telegram
+ExecStart=/usr/bin/env ALERT_INCLUDE_LOGS=false ALERT_LOG_LINES=0 ALERT_MAX_BODY_BYTES=1024 ALERT_MIN_INTERVAL_SECONDS=86400 ALERT_STATE_DIR=/var/lib/asm-alert-test ALERT_API_KEY_FILE=%d/smtp-pass TELEGRAM_CREDENTIALS_FILE=%d/telegram /usr/bin/flock --wait 150 /var/lib/asm-alert-test/.delivery.lock /usr/local/libexec/swift-vapor/alert-notify.sh --subject "ASM TODO monitoring test"
+StandardInputText=ASM TODO monitoring test: health and backup checks are installed. This message contains no workspace data, recovery keys or private logs.
+TimeoutStartSec=5min
+UMask=0077
+LimitCORE=0
+MemoryMax=96M
+TasksMax=32
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+

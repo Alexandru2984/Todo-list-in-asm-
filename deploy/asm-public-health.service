@@ -1,0 +1,34 @@
+[Unit]
+Description=ASM TODO public HTTPS health
+Wants=network-online.target
+After=network-online.target
+OnFailure=asm-alert@%n.service
+OnSuccess=asm-resolved@%n.service
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/srv/canary/asm.micutu.com/app/bin/probe --http https://asm.micutu.com/healthz
+TimeoutStartSec=20s
+UMask=0077
+LimitCORE=0
+MemoryMax=64M
+TasksMax=32
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+

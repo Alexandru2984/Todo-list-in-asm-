@@ -59,7 +59,7 @@ privately before clearing cookies. Exports of tasks do not contain the key.
 Linux x86_64, NASM, binutils/ld and make are required.
 
 ```sh
-make                 # build/server, build/backup, build/offsite; keeps production binaries intact
+make                 # native server, backup, offsite and probe; keeps production binaries intact
 make run             # local data/ and 127.0.0.1:34624
 ./build/server 8080   # choose a port; conflicts fail instead of scanning
 ```
@@ -119,6 +119,10 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 
 ## Architecture
 
+Operational checks also use [native ASM validation](docs/MONITORING.md) for exact
+health responses and filesystem capacity. Optional notifications reuse the host
+relay with forced log exclusion and explicit operator opt-in.
+
 | File | Purpose |
 |---|---|
 | `src/main.asm` | Loopback socket, bounded child lifetime, fork-per-connection lifecycle |
@@ -134,6 +138,7 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `src/maintenance.asm` | Storage preflight, safe downgrade and retained-policy restore |
 | `native/backup.asm` | Native TAR snapshots, verification, atomic publication and retention |
 | `native/offsite.asm` | Native off-host admission, staging, readback comparison and health |
+| `native/probe.asm` | Exact HTTP health acceptance and read-only filesystem capacity checks |
 | `native/sha256.asm` | Native SHA-256 integrity implementation |
 | `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
 | `src/utils.asm` | Complete writes, strict decimal parsing, UTF-8 validation and strings |

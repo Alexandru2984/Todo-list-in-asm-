@@ -65,6 +65,14 @@ unprivileged transport, downloaded byte/native validation, atomic success receip
 and hourly freshness checks. Remote retention, independent secret escrow and
 external alert delivery remain operator work. See [the contract and acceptance](OFFSITE.md).
 
+## Release 8 — native operational checks and private notifications
+
+Native exact health acceptance, HTTP/TLS transport without inherited client
+configuration, read-only filesystem space/inode checks and five-minute offsite
+freshness checks. Prepared notification hooks reuse the existing host relay with
+forced log exclusion, per-incident throttling and recovery messages. External
+delivery requires explicit operator opt-in. See [monitoring](MONITORING.md).
+
 ## Next — additional organization
 
 - Manual drag ordering with equivalent keyboard controls; the native board and

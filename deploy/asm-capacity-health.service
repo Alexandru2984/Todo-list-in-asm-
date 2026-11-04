@@ -1,0 +1,33 @@
+[Unit]
+Description=ASM TODO storage space and inode health
+OnFailure=asm-alert@%n.service
+OnSuccess=asm-resolved@%n.service
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/srv/canary/asm.micutu.com/app/bin/probe --space /var/lib/asm-todo 1073741824 15 10
+ExecStart=/srv/canary/asm.micutu.com/app/bin/probe --space /var/backups/asm-todo 1073741824 15 10
+ExecStart=/srv/canary/asm.micutu.com/app/bin/probe --space /var/lib/asm-offsite 1073741824 15 10
+TimeoutStartSec=10s
+UMask=0077
+LimitCORE=0
+MemoryMax=16M
+# systemd briefly overlaps executors between the three sequential checks.
+TasksMax=4
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+SystemCallFilter=read write open close fstatfs prctl execve execveat exit exit_group
+SystemCallErrorNumber=EPERM
+

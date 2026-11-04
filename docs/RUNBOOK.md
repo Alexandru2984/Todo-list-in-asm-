@@ -10,7 +10,9 @@
 - Nginx templates: `deploy/asm.nginx.conf`, `asm-proxy.conf`, `asm-limits.conf`.
 - Backup timer: `asm-backup.timer`, daily around 03:17 UTC, local 14-day retention.
 - Optional encrypted transport: asm-offsite.service after local backup success,
-  with native hourly asm-offsite-health.timer. See [setup/recovery](OFFSITE.md).
+  with native five-minute asm-offsite-health.timer. See [setup/recovery](OFFSITE.md).
+- Optional [monitoring](MONITORING.md): minute HTTP/HTTPS checks, five-minute
+  capacity checks and metadata-only operator notifications behind explicit opt-in.
 - Native private snapshots: `/var/backups/asm-todo/asm-todo-EPOCH-RANDOM.tar`.
 - Backup executable: `/srv/canary/asm.micutu.com/app/bin/backup`, raw NASM + syscalls.
 - Older `.tar.gz` snapshots remain intact for compatibility.
@@ -60,6 +62,12 @@ failure; repeated 5xx; sustained 429s; disk free below 15%; inode free below 10%
 and a backup older than 26 hours. These are recommended rules, not a claim that
 notification delivery/on-call is configured. Current MTTD is unmeasured.
 No task text, cookie headers or recovery keys belong in alert payloads.
+
+The native monitoring stage implements exact health/capacity checks and private
+backup failure/recovery hooks. External delivery stays gated until explicit
+operator activation; see MONITORING.md for the test message and acceptance.
+Rate/5xx telemetry, independent host-loss detection and staffed on-call coverage
+remain separate work. Monitoring does not enforce filesystem quotas.
 
 Nginx access logging uses `$uri`, not the original request/query/referrer.
 Routine nginx error logging is reduced to critical events because error-log

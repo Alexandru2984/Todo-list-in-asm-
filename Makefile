@@ -9,7 +9,7 @@ WEB := $(wildcard web/*)
 TARGET := build/server
 
 .PHONY: all clean run test check
-all: $(TARGET) build/backup build/offsite
+all: $(TARGET) build/backup build/offsite build/probe
 
 build:
 	mkdir -p build
@@ -37,6 +37,12 @@ build/offsite: build/offsite-native.o build/utils.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 build/offsite-native.o: native/offsite.asm src/defs.inc | build
+	$(ASM) $(ASMFLAGS) $< -o $@
+
+build/probe: build/probe-native.o build/utils.o
+	$(LD) $(LDFLAGS) -o $@ $^
+
+build/probe-native.o: native/probe.asm src/defs.inc | build
 	$(ASM) $(ASMFLAGS) $< -o $@
 
 run: all

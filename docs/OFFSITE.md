@@ -58,7 +58,7 @@ Transport cannot read live tasks/source archives. OAuth refresh updates only its
 isolated config. Provider scope is inherited from the existing token: the remote
 prefix is not IAM. Shared-provider/crypt compromise may affect other projects.
 
-An hourly health timer requires both archive and verification timestamps to be
+The monitoring stage's five-minute timer requires both archive and verification timestamps to be
 within 93,600 seconds. It checks a receipt, not the provider. A late/absent record
 fails the health unit. Worker failures retry after 15 minutes, limited to three
 starts in two hours. External alert delivery/on-call remain unconfigured.
