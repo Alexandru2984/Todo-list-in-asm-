@@ -216,13 +216,17 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.server.request('GET', '/nope')[0], 404)
 
     def test_concurrent_writes_all_persist(self):
+        # Exercise workspace serialization after admission. Contended first
+        # admission may legitimately return 503 and is covered separately.
+        self.add('reserved workspace')
         def add(i):
             return self.post('/add', {'title': f'parallel {i}'})[0]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             self.assertEqual(list(pool.map(add, range(40))), [303]*40)
         records = json.loads(self.server.request('GET', '/export.json', cookie=self.cookie)[2])['tasks']
-        self.assertEqual(len(records), 40)
-        self.assertEqual(len({task['id'] for task in records}), 40)
+        self.assertEqual(len(records), 41)
+        self.assertEqual(len({task['id'] for task in records}), 41)
+        self.assertEqual({task['title'] for task in records}, {'reserved workspace'} | {f'parallel {i}' for i in range(40)})
 
     def test_survives_restart_and_private_permissions(self):
         self.add('persistent')
