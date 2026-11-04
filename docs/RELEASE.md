@@ -8,6 +8,11 @@ framework, interpreter or database runtime was added.
 
 ## Delivered
 
+- Storage V5 supports native recovery-key rotation/revocation without moving
+  workspace data. Save the inactive candidate before confirmation; a lost reply
+  can be recovered using that complete key without another mutation. Native
+  offline restore retains the highest available key epoch, and every older-reader
+  conversion refuses V5 before snapshot rewrites. See STORAGE-V5.md.
 - Storage V4 adds monotonic workspace revisions, scoped state preconditions and
   16 atomically persisted successful request receipts. Exact retries do not write
   twice; stale/different-body reuse returns 412 with preserved native drafts.
@@ -64,11 +69,13 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Verification
 
-- **177 local integration tests passed**: protocol, storage/revisions, recurrence,
+- **198 local integration tests passed**: key rotation/revocation/restore,
+  protocol, storage/revisions, recurrence,
   metadata/relationships, history, query/layout/statistics, exports/imports, native
   backup/legacy archive compatibility, deployment probes, real isolated nginx
   policy and public crawler resources. JavaScript syntax and patch checks passed.
-- **44 browser tests passed** on desktop and Pixel 5 emulation, including native
+- **48 browser tests passed** on desktop and Pixel 5 emulation, including key
+  preparation/download, revoked-session recovery and native
   no-JavaScript workflows, import preview/merge/replace/undo, layout checks at
   320/390/768/1440 px and automated axe WCAG A/AA checks in light/dark themes.
   Automated axe results are not an accessibility certification.
@@ -125,8 +132,9 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 
 ## Remaining limits
 
-Anonymous bearer keys are not accounts and have no server-side revocation or
-account recovery. Native admission bounds protocol-managed reservations to 1,024 workspaces; no
+Anonymous bearer keys are not accounts. Rotation revokes every older key for one
+workspace; there is no independent device-session management or account recovery.
+Native admission bounds protocol-managed reservations to 1,024 workspaces; no
 OS filesystem/user quota or automatic expiry is configured. Off-host
 encrypted backups and external alert delivery remain operator configuration;
 local archives do not protect against VPS loss. Purge does not erase retained
@@ -134,7 +142,8 @@ archives or operator-managed release/recovery snapshots.
 
 Protected V4 requests have a bounded 16-receipt retry window, committed with task
 state. Reuse the exact original body/pair after a lost response. Restoring an older
-archive also restores its receipt window; no indefinite/cross-restore exactly-once
+archive alone also restores its receipt window; the documented V5 policy merge
+clears restored receipts and advances revision. No indefinite/cross-restore exactly-once
 guarantee is claimed. Legacy clients before V4 activation lack these protections. Unicode matching uses the documented
 simple folds rather than full normalization/collation, and dates use UTC. The
 native parser/crypto implementations have independent format/hash oracles and

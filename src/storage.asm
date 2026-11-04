@@ -9,6 +9,7 @@ extern history_prepare, history_complete
 extern task_ready
 extern guard_storage_reset, guard_hash_state, guard_parse, guard_validate, guard_check
 extern guard_presave, guard_write
+extern auth_storage_reset, auth_parse, auth_validate, auth_write
 extern request_method, request_path, strcmp, admission_open
 
 global check_regular
@@ -24,6 +25,7 @@ section .data
     data_dir db 'data',0
     prefix db 'data/todos-',0
     seq_prefix db '#next=',0
+    v5_header db '#asm=5',10
     v4_header db '#asm=4',10
     v2_header db '#asm=3',10
     v2_header_len equ $-v2_header
@@ -188,6 +190,7 @@ load_todos:
     mov qword [lookup_array],todos
     call history_reset
     call guard_storage_reset
+    call auth_storage_reset
     mov rdi,file_buf
     xor esi,esi
     call guard_hash_state
@@ -257,6 +260,11 @@ load_todos:
     jnz .bad
     cmp dword [r14+3],'m=2'
     je .v2
+    cmp dword [r14+3],'m=5'
+    jne .check_v4
+    mov qword [storage_version],5
+    jmp .next
+.check_v4:
     cmp dword [r14+3],'m=4'
     jne .check_v3
     mov qword [storage_version],4
@@ -270,8 +278,16 @@ load_todos:
     mov qword [storage_version],2
     jmp .next
 .sequence:
+    cmp qword [storage_version],5
+    jne .guard
+    mov rdi,r14
+    call auth_parse
+    test rax,rax
+    js .bad
+    jnz .next
+.guard:
     cmp qword [storage_version],4
-    jne .history
+    jb .history
     mov rdi,r14
     call guard_parse
     test rax,rax
@@ -323,7 +339,14 @@ load_todos:
     jne .bad
     cmp r13,7 ; V2 sequence header follows the version header
     jne .bad
-.read_sequence:
+ .read_sequence:
+    cmp qword [storage_version],5
+    jb .sequence_length_ok
+    mov rax,r15
+    sub rax,r14
+    cmp rax,26
+    ja .bad
+.sequence_length_ok:
     mov qword [sequence_seen],1
     lea rdi,[r14+6]
     call parse_uint
@@ -471,6 +494,9 @@ load_todos:
     cmp r8,200
     ja .bad
 .ok:
+    call auth_validate
+    test rax,rax
+    js .done
     call guard_validate
     test rax,rax
     js .bad
@@ -565,6 +591,11 @@ save_snapshot:
     jne .sequence
     mov rdi,r12
     mov rsi,v2_header
+    cmp qword [storage_version],5
+    jne .v4_header
+    mov rsi,v5_header
+    jmp .header_ready
+.v4_header:
     cmp qword [storage_version],4
     jne .header_ready
     mov rsi,v4_header
@@ -592,8 +623,15 @@ save_snapshot:
     js .close_bad
     cmp qword [write_legacy],0
     jne .records
+    cmp qword [storage_version],5
+    jne .guards
+    mov rdi,r12
+    call auth_write
+    test rax,rax
+    js .close_bad
+.guards:
     cmp qword [storage_version],4
-    jne .records
+    jb .records
     mov rdi,r12
     call guard_write
     test rax,rax

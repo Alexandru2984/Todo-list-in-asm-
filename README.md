@@ -9,6 +9,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
 
 ## What works
 
+- Native recovery-key rotation/revocation, saved-candidate response recovery and
+  policy-preserving offline restores; [V5 contract](docs/STORAGE-V5.md).
 - Add, edit, duplicate, complete, reopen, delete and clear completed tasks.
 - Priorities, UTC due dates, Today / Next 7 days / Overdue views, six sort
   orders, search, All/Active/Done filters and progress indicators,
@@ -122,7 +124,8 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `src/json.asm`, `src/csv.asm`, `src/import*.asm` | Bounded native lexers, import preview/confirmation, reference remapping and global admission lock |
 | `src/query.asm`, `src/layout.asm`, `src/insights.asm` | Structured search, calendar/board and private SVG statistics |
 | `src/history.asm`, `src/relations.asm`, `src/recurrence.asm` | Undo/trash, graph validation and native recurring dates |
-| `src/maintenance.asm` | Read-only storage preflight, reader revision and offline downgrade |
+| `src/session.asm`, `access.asm`, `rotation.asm` | Credentials, V5 policy, native key rotation/download |
+| `src/maintenance.asm` | Storage preflight, safe downgrade and retained-policy restore |
 | `native/backup.asm` | Native TAR snapshots, verification, atomic publication and retention |
 | `native/sha256.asm` | Native SHA-256 integrity implementation |
 | `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
@@ -135,7 +138,9 @@ Versioned snapshots preserve legacy V1/V2/V3 reads. Protected mutations activate
 [revision 4](docs/STORAGE-V4.md), with monotonic revisions and atomic request receipts. Monotonic IDs survive deletion. Native trash retains up to 200 items, with restoration, permanent purge,
 workspace-wide undo/redo and bounded activity in the
 [revision 3 extension](docs/STORAGE-HISTORY.md). The native
-offline downgrade command supports rollback to older binaries. See the
+offline downgrade command supports rollback of unrotated snapshots to older
+binaries; [V5 rotated snapshots](docs/STORAGE-V5.md) require a compatible reader.
+See the
 [storage contract](docs/STORAGE-V2.md).
 
 Limits: 1,000 live tasks plus 200 trash items per workspace, 110 **UTF-8 bytes**
@@ -143,7 +148,7 @@ per title, 4,095 bytes per ordinary request/header block and one HTTP request pe
 connection. Only authenticated import paths admit up to 7 MiB of form-encoded
 request, with a 2 MiB decoded source cap and one global importer. See the
 [import contract](docs/IMPORT.md). There is no runtime TLS, account recovery,
-server-side session revocation, offline queue or collaboration layer.
+independent device-session management, offline queue or collaboration layer.
 
 The [native planner delivery plan](docs/PLANNER-PLAN.md) tracks recurrence,
 projects, dependencies, undo/trash, import, structured search, calendar and insights.

@@ -8,6 +8,9 @@ extern request_cookie, request_origin, request_host, request_site
 
 global handle_request, current_uid, send_error, copy_string, html_escape, emit_number
 extern handle_import, is_import_path
+extern copy_uid, copy_session_key, parse_cookie, session_key, session_key_length
+extern auth_probe, auth_candidate, auth_rotate, auth_required
+extern rotation_form, rotation_target, rotation_saved, rotation_flags, rotation_scope, rotation_reset, rotation_field
 extern guard_begin, guard_field, guard_fields_finish, guard_finish, guard_html, guard_json
 global redirect_app
 global authorize_import_headers, send_private_html, res_buf
@@ -72,6 +75,8 @@ section .data
     mime_png db 'image/png',0
     social: incbin 'web/social-card.png'
     social_len equ $-social
+    rotate_path db '/rotate-key',0
+    candidate_path db '/rotation-key',0
     recovery_path db '/recovery',0
     recovery_headers db 'X-Robots-Tag: noindex, nofollow',13,10,'Content-Disposition: attachment; filename="asm-workspace-key.txt"',13,10,0
     draft_open db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Draft preserved — ASM TODO</title><link rel="stylesheet" href="/app.css"></head><body><main class="native-action"><h1>Changes could not be saved</h1><p>Saving failed. Your draft is preserved below. Check the workspace before retrying an interrupted change.</p><form method="post" action="',0
@@ -158,6 +163,9 @@ section .data
     status_411 db 'HTTP/1.1 411 Length Required',13,10,0
     error_411 db 'Content-Length is required.',10
     error_411_len equ $-error_411
+    status_410 db 'HTTP/1.1 410 Gone',13,10,0
+    error_410 db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Key inactive — ASM TODO</title><link rel="stylesheet" href="/app.css"></head><body><main class="native-import"><h1>This key is no longer active</h1><p>If you just rotated your recovery key, restore access with the new key you saved, or retry the same rotation confirmation. An unconfirmed candidate is not active yet.</p><a href="/" class="primary-button">Restore from home</a><form action="/forget" method="post"><button class="secondary-button">Forget inactive key</button></form></main></body></html>'
+    error_410_len equ $-error_410
     status_428 db 'HTTP/1.1 428 Precondition Required',13,10,0
     error_428 db 'Reload the workspace before changing tasks. Clients must fetch /state.json and send _state and _request with each change.',10
     error_428_len equ $-error_428
@@ -315,6 +323,8 @@ send_error:
     je .e405
     cmp r10,409
     je .e409
+    cmp r10,410
+    je .e410
     cmp r10,411
     je .e411
     cmp r10,412
@@ -368,6 +378,13 @@ send_error:
     mov edx,error_409_len
     mov rcx,status_409
     jmp .send
+.e410:
+    mov rsi,error_410
+    mov edx,error_410_len
+    mov rcx,status_410
+    mov r8,mime_html
+    mov r9,private_headers
+    jmp respond
 .e411:
     mov rsi,error_411
     mov edx,error_411_len
@@ -424,95 +441,6 @@ send_error:
     mov r8,mime_text
     mov r9,private_headers
     jmp respond
-
-; rdi -> exact 32 lowercase hex chars; copy to current_uid or return -400.
-copy_uid:
-    xor ecx,ecx
-.loop:
-    mov al,[rdi+rcx]
-    cmp al,'0'
-    jb .bad
-    cmp al,'9'
-    jbe .digit
-    cmp al,'a'
-    jb .bad
-    cmp al,'f'
-    ja .bad
-.digit:
-    inc ecx
-    cmp ecx,32
-    jb .loop
-    cmp byte [rdi+32],0
-    jne .bad
-    mov rsi,rdi
-    mov rdi,current_uid
-    mov ecx,32
-    rep movsb
-    mov byte [rdi],0
-    xor eax,eax
-    ret
-.bad:
-    mov rax,-400
-    ret
-
-; Cookie parser matches only semicolon-delimited asm_uid, rejects duplicates.
-parse_cookie:
-    mov byte [current_uid],0
-    mov r8,request_cookie
-    xor r9d,r9d
-.next:
-    cmp byte [r8],0
-    je .ok
-    cmp byte [r8],' '
-    je .skip
-    cmp byte [r8],';'
-    je .skip
-    mov r10,r8
-.end:
-    cmp byte [r10],0
-    je .match
-    cmp byte [r10],';'
-    je .match
-    inc r10
-    jmp .end
-.match:
-    mov rdi,r8
-    mov rsi,cookie_key
-    mov edx,8
-    call strncmp
-    test rax,rax
-    jnz .advance
-    inc r9
-    cmp r9,1
-    ja .bad
-    mov rax,r10
-    sub rax,r8
-    cmp rax,40
-    jne .bad
-    mov r11b,[r10]
-    mov byte [r10],0
-    push r10
-    push r11
-    lea rdi,[r8+8]
-    call copy_uid
-    pop r11
-    pop r10
-    mov [r10],r11b
-    test rax,rax
-    js .bad
-.advance:
-    mov r8,r10
-    cmp byte [r8],0
-    je .ok
-.skip:
-    inc r8
-    jmp .next
-.ok:
-    xor eax,eax
-    ret
-.bad:
-    mov rax,-400
-    ret
 
 ; Reject sibling-site and cross-site writes; Origin must exactly match Host.
 check_origin:
@@ -659,6 +587,7 @@ parse_form:
     push r12
     push r13
     call reset_properties
+    call rotation_reset
     mov qword [form_flags],0
     mov byte [form_title],0
     mov byte [form_token],0
@@ -721,10 +650,13 @@ parse_form:
     mov rdi,decode_buf
     call strlen
     cmp rax,32
+    je .token_length
+    cmp rax,64
     jne .bad
+.token_length:
+    lea rcx,[rax+1]
     mov rsi,decode_buf
     mov rdi,form_token
-    mov ecx,33
     rep movsb
     jmp .next
 .property:
@@ -733,6 +665,12 @@ parse_form:
     mov rdi,rbx
     mov rsi,decode_buf
     call guard_field
+    test rax,rax
+    js .done
+    jnz .next
+    mov rdi,rbx
+    mov rsi,decode_buf
+    call rotation_field
     test rax,rax
     js .done
     jnz .next
@@ -834,23 +772,31 @@ new_session:
     cmp ecx,16
     jb .hex
     mov byte [current_uid+32],0
-    xor eax,eax
-    ret
+    mov rdi,current_uid
+    jmp copy_session_key
 .bad:
     mov rax,-503
     ret
 
 session_redirect:
+    call auth_probe
+    test rax,rax
+    js .access_error
     mov rdi,extra_buf
     mov rsi,session_prefix
     call copy_string
-    mov rsi,current_uid
+    mov rsi,session_key
     call copy_string
     mov rsi,session_tail
     call copy_string
     mov byte [rdi],0
     mov r9,extra_buf
     jmp redirect
+.access_error:
+    neg rax
+    mov rdi,rax
+    mov rsi,r12
+    jmp send_error
 redirect_app:
     call guard_finish
     test rax,rax
@@ -936,6 +882,16 @@ handle_request:
     call strcmp
     test rax,rax
     jz .get_social
+    mov rdi,request_path
+    mov rsi,rotate_path
+    call strcmp
+    test rax,rax
+    jz .get_rotate
+    mov rdi,request_path
+    mov rsi,candidate_path
+    call strcmp
+    test rax,rax
+    jz .method
     mov rdi,request_path
     mov rsi,recovery_path
     call strcmp
@@ -1092,6 +1048,19 @@ handle_request:
     test rax,rax
     jnz .bad
 .form_ready:
+    cmp qword [rotation_flags],0
+    je .public_form
+    mov rdi,request_path
+    mov rsi,rotate_path
+    call strcmp
+    test rax,rax
+    jz .public_form
+    mov rdi,request_path
+    mov rsi,candidate_path
+    call strcmp
+    test rax,rax
+    jnz .bad
+.public_form:
     mov rdi,request_path
     mov rsi,path_8
     call strcmp
@@ -1109,6 +1078,16 @@ handle_request:
     jz .post_forget
     cmp byte [current_uid],0
     je .unauthorized
+    mov rdi,request_path
+    mov rsi,rotate_path
+    call strcmp
+    test rax,rax
+    jz .post_rotate
+    mov rdi,request_path
+    mov rsi,candidate_path
+    call strcmp
+    test rax,rax
+    jz .post_candidate
     mov rdi,request_path
     mov rsi,start_work_path
     call strcmp
@@ -1245,13 +1224,35 @@ handle_request:
     mov r9,empty
     call respond
     jmp .done
+.get_rotate:
+    cmp byte [current_uid],0
+    je .unauthorized
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    push rax
+    call unlock_user_file
+    pop rax
+    test rax,rax
+    js .error
+    mov rdi,r12
+    mov esi,200
+    call rotation_form
+    test rax,rax
+    js .error
+    jmp .done
 .get_recovery:
     cmp byte [current_uid],0
     je .unauthorized
-    mov byte [current_uid+32],10
+    call auth_probe
+    test rax,rax
+    js .error
+    mov rdx,[session_key_length]
+    mov byte [session_key+rdx],10
+    inc rdx
     mov rdi,r12
-    mov rsi,current_uid
-    mov edx,33
+    mov rsi,session_key
     mov rcx,ok
     mov r8,mime_text
     mov r9,recovery_headers
@@ -1313,10 +1314,96 @@ handle_request:
     cmp qword [form_flags],4
     jne .bad
     mov rdi,form_token
-    call copy_uid
+    call copy_session_key
     test rax,rax
     js .error
     call session_redirect
+    jmp .done
+.post_candidate:
+    cmp qword [form_flags],0
+    jne .bad
+    cmp qword [rotation_flags],1
+    je .candidate_ready
+    cmp qword [rotation_flags],3
+    jne .bad
+.candidate_ready:
+    call rotation_scope
+    test rax,rax
+    js .error
+    call auth_probe
+    test rax,rax
+    js .error
+    mov byte [rotation_target+64],10
+    mov rdi,r12
+    mov rsi,rotation_target
+    mov edx,65
+    mov rcx,ok
+    mov r8,mime_text
+    mov r9,recovery_headers
+    call respond
+    jmp .done
+.post_rotate:
+    cmp qword [form_flags],0
+    jne .bad
+    cmp qword [rotation_flags],3
+    jne .bad
+    call rotation_scope
+    test rax,rax
+    js .error
+    call auth_required
+    test rax,rax
+    js .error
+    call lock_user_file
+    test rax,rax
+    js .error
+    call load_todos
+    cmp rax,-410
+    je .rotation_recover
+    cmp rax,-208
+    je .rotation_signed_in
+    test rax,rax
+    js .rotation_error
+    mov rdi,session_key
+    mov rsi,rotation_target
+    call strcmp
+    test rax,rax
+    jz .rotation_bad
+    mov rdi,rotation_target
+    call auth_rotate
+    test rax,rax
+    js .rotation_error
+    mov rdi,rotation_target
+    call copy_session_key
+    jmp .rotation_signed_in
+.rotation_recover:
+    ; The caller supplies the full already-active new credential. This is
+    ; login-only response recovery, never an old-key lookup of a new secret.
+    mov rdi,rotation_target
+    call copy_session_key
+    call auth_probe
+    test rax,rax
+    js .rotation_error
+.rotation_signed_in:
+    call unlock_user_file
+    call session_redirect
+    jmp .done
+.rotation_bad:
+    mov rax,-400
+.rotation_error:
+    push rax
+    call unlock_user_file
+    pop rax
+    cmp rax,-412
+    je .rotation_review
+    cmp rax,-507
+    jne .error
+.rotation_review:
+    neg rax
+    mov rsi,rax
+    mov rdi,r12
+    call rotation_form
+    test rax,rax
+    js .error
     jmp .done
 .post_forget:
     cmp qword [form_flags],0
@@ -1974,6 +2061,9 @@ authorize_import_headers:
     cmp byte [current_uid],0
     je .unauthorized
     call check_origin
+    test rax,rax
+    js .done
+    call auth_probe
 .done:
     ret
 .unauthorized:

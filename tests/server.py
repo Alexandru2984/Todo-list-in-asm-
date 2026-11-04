@@ -82,7 +82,7 @@ class Server:
         return headers['Set-Cookie'].split(';')[0]
 
     def file(self, cookie):
-        return self.root / 'data' / f'todos-{cookie.split("=", 1)[1]}.txt'
+        return self.root / 'data' / f'todos-{cookie.split("=", 1)[1][:32]}.txt'
 
     def raw(self, request, split_at=None):
         with socket.create_connection(('127.0.0.1', self.port), timeout=5) as sock:

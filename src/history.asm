@@ -1,5 +1,6 @@
 %include "src/defs.inc"
 DEFAULT ABS
+extern storage_version
 extern todos, todo_count, lookup_array, save_snapshot, format_line, line_buf
 extern format_metadata, validate_metadata_graph, split_field, parse_uint
 extern itoa, write_all, copy_string, emit_number, format_utc, render_template
@@ -22,8 +23,9 @@ section .data
     op_stage db 'Changed workflow stage',0
     op_undo db 'Undid the last change',0
     op_redo db 'Redid the last change',0
+    op_rotate db 'Rotated recovery key',0
     op_names dq op_add,op_edit,op_complete,op_reopen,op_trash,op_clear
-             dq op_restore,op_purge,op_import,op_stage,op_undo,op_redo
+             dq op_restore,op_purge,op_import,op_stage,op_undo,op_redo,op_rotate
     history_open db '<section class="workspace-tools history-panel" aria-labelledby="history-heading"><h2 id="history-heading">Recent changes</h2><div class="export-actions">',0
     undo_form db '<form method="post" action="{{mutation_prefix}}/undo"><button class="secondary-button"',0
     redo_form db '<form method="post" action="{{mutation_prefix}}/redo"><button class="secondary-button"',0
@@ -233,8 +235,12 @@ history_parse:
     mov rax,[parse_fields+8]
     test rax,rax
     jz .bad
-    cmp rax,12
+    cmp rax,13
     ja .bad
+    jb .valid_op
+    cmp qword [storage_version],5
+    jb .bad
+.valid_op:
     mov rax,[parse_fields+16]
     mov rdx,9223372036854775807
     cmp rax,rdx

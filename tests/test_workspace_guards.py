@@ -79,15 +79,25 @@ class WorkspaceGuardTests(unittest.TestCase):
 
     def test_concurrent_retries_commit_once(self):
         fields=dict(title='One',**self.pair())
+        def retry(_):
+            # First admission may contend with another worker until it exits.
+            # Retry the identical operation, including its original guard pair.
+            for _ in range(30):
+                status=self.post('/add',fields)[0]
+                if status!=503:return status
+                time.sleep(.01)
+            return status
         with ThreadPoolExecutor(max_workers=4) as pool:
-            codes=list(pool.map(lambda _:self.post('/add',fields)[0],range(4)))
+            codes=list(pool.map(retry,range(4)))
         self.assertEqual(codes,[303]*4);self.assertEqual(len(self.tasks()),1);self.assertEqual(self.revision(),1)
 
     def test_concurrent_distinct_requests_have_one_winner(self):
+        # Reserve this ID before testing the independent workspace CAS lock.
+        self.assertEqual(self.fresh('/add',dict(title='Seed'))[0],303)
         first=dict(title='First',**self.pair());second=dict(title='Second',**self.pair())
         with ThreadPoolExecutor(max_workers=2) as pool:
             results=list(pool.map(lambda fields:self.post('/add',fields),[first,second]))
-        self.assertEqual(sorted(result[0] for result in results),[303,412]);self.assertEqual(len(self.tasks()),1)
+        self.assertEqual(sorted(result[0] for result in results),[303,412]);self.assertEqual(len(self.tasks()),2)
         self.assertIn(b'Workspace changed',next(body for code,_,body in results if code==412))
 
     def test_stale_edit_preserves_draft_and_reviewed_retry_uses_fresh_pair(self):
@@ -171,7 +181,7 @@ class WorkspaceGuardTests(unittest.TestCase):
         self.path.write_bytes(original);self.server.stop()
         result=subprocess.run([str(BINARY),'--check-storage'],cwd=self.server.root,capture_output=True,timeout=5);self.assertEqual(result.returncode,0)
         self.assertEqual(self.path.read_bytes(),original)
-        self.assertEqual(subprocess.run([str(BINARY),'--storage-version'],capture_output=True).stdout,b'4\n')
+        self.assertEqual(subprocess.run([str(BINARY),'--storage-version'],capture_output=True).stdout,b'5\n')
         self.assertEqual(subprocess.run([str(BINARY),'--downgrade'],cwd=self.server.root,capture_output=True,timeout=5).returncode,0)
         self.assertEqual(self.path.read_bytes(),b'#next=2\n1|0|'+original.split(b'1|0|',1)[1].split(b'\n',1)[0]+b'\n')
         self.server.start();self.assertEqual(self.tasks()[0]['title'],'One')

@@ -3,10 +3,35 @@
 import argparse
 import http.client
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 import re
 import time
 from urllib.parse import urlencode, urlsplit
+
+
+class Rotation(HTMLParser):
+    def __init__(self, body):
+        super().__init__()
+        self.fields = {}
+        self.in_key = False
+        self.feed(body.decode())
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'input' and attrs.get('name') in ['_state', '_request']:
+            self.fields[attrs['name']] = attrs['value']
+        if tag == 'textarea' and attrs.get('name') == 'new_key':
+            self.in_key = True
+            self.fields['new_key'] = ''
+
+    def handle_endtag(self, tag):
+        if tag == 'textarea':
+            self.in_key = False
+
+    def handle_data(self, data):
+        if self.in_key:
+            self.fields['new_key'] += data
 
 
 def probe(base, cleanup_data=None):
@@ -130,9 +155,36 @@ def probe(base, cleanup_data=None):
         assert request('POST', '/add', dict(fields, title='Rejected different payload'))[0] == 412, 'Reused operation key was not rejected'
         assert request('POST', '/undo', {})[0] == 303, 'Guarded replay verification undo failed'
         assert len(json.loads(request('GET', '/export.json')[2])['tasks']) == 1, 'Guarded replay verification changed final fixture'
+        before_rotation = json.loads(request('GET', '/export.json')[2])
+        status, _, page = request('GET', '/rotate-key')
+        assert status == 200, 'Rotation preparation failed'
+        fields = Rotation(page).fields
+        candidate = fields['new_key']
+        assert re.fullmatch('[a-f0-9]{64}', candidate) and candidate.startswith(token), 'Invalid prepared key'
+        status, key_headers, key_body = request('POST', '/rotation-key', fields)
+        assert status == 200 and key_body == candidate.encode() + b'\n', 'Prepared-key download failed'
+        assert 'attachment' in key_headers['Content-Disposition'], 'Prepared key was not an attachment'
+        previous_cookie = cookie
+        fields['saved'] = '1'
+        status, key_headers, _ = request('POST', '/rotate-key', fields)
+        assert status == 303, 'Rotation confirmation failed'
+        cookie = key_headers['Set-Cookie'].split(';')[0]
+        assert cookie == 'asm_uid=' + candidate, 'Rotated session cookie failed'
+        after_rotation = json.loads(request('GET', '/export.json')[2])
+        assert all(after_rotation[key] == before_rotation[key] for key in ['tasks', 'trash']), 'Rotation changed task contents'
+        before_retry = request('GET', '/state.json')[2]
+        cookie = previous_cookie
+        assert request('GET', '/state.json')[0] == 410, 'Old key was not revoked'
+        status, key_headers, _ = request('POST', '/rotate-key', fields)
+        assert status == 303, 'Lost-response recovery failed'
+        cookie = key_headers['Set-Cookie'].split(';')[0]
+        after_retry = request('GET', '/state.json')[2]
+        assert json.loads(before_retry)['revision'] == json.loads(after_retry)['revision'], 'Recovery retried rotation'
+        assert request('GET', '/recovery')[2] == candidate.encode() + b'\n', 'Rotated recovery download failed'
         robots = request('GET', '/robots.txt')[2]
         assert b'Allow: /app.css' in robots and b'Allow: /app.js' in robots, 'Public asset crawl policy failed'
-        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, quick capture, ICS, V4 conflicts/replay, trash/purge and edge policy')
+        print('Release probe passed: native planner, recurrence, board/calendar, SVG, import/undo, quick capture, ICS, conflicts/replay, key rotation/revocation/recovery, trash/purge and edge policy')
+        return cookie
     finally:
         # Only the fresh getrandom session created by this invocation is removed.
         if cleanup_data and token and re.fullmatch('[a-f0-9]{32}', token):

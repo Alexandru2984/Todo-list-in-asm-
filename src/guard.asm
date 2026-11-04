@@ -6,7 +6,7 @@ extern storage_version, lock_user_file, unlock_user_file, load_todos, save_snaps
 
 global guard_begin, guard_field, guard_fields_finish, guard_preview
  global guard_storage_reset, guard_hash_state, guard_parse, guard_validate, guard_check
- global guard_presave, guard_write, guard_finish, guard_html, guard_json
+ global guard_presave, guard_write, guard_finish, guard_html, guard_json, guard_required, guard_restore_floor
 section .data
     state_key db '_state',0
     request_key db '_request',0
@@ -252,6 +252,14 @@ guard_parse:
     jne .bad
     cmp qword [revision_seen],0
     jne .bad
+    cmp qword [storage_version],5
+    jb .revision_number
+    push rdi
+    call strlen
+    pop rdi
+    cmp rax,19
+    ja .bad
+.revision_number:
     call parse_uint
     test rax,rax
     jle .bad
@@ -332,7 +340,7 @@ guard_parse:
 
 guard_validate:
     cmp qword [storage_version],4
-    jne .ok
+    jb .ok
     cmp qword [generation_seen],1
     jne .bad
     cmp qword [revision_seen],1
@@ -349,7 +357,7 @@ guard_check:
     cmp qword [mode],0
     jne .guarded
     cmp qword [storage_version],4
-    jne .ok
+    jb .ok
     cmp qword [request_method],2
     jne .ok
     mov rdi,request_path
@@ -436,7 +444,7 @@ guard_presave:
     cmp qword [pending],0
     jne .v4
     cmp qword [storage_version],4
-    jne .ok
+    jb .ok
 .v4:
     mov rax,9223372036854775807
     cmp [revision],rax
@@ -446,7 +454,10 @@ guard_presave:
     call random_hex
     test rax,rax
     js .done
+    cmp qword [storage_version],4
+    ja .version_ready
     mov qword [storage_version],4
+.version_ready:
     mov qword [generation_seen],1
     cmp qword [pending],0
     je .ok
@@ -701,4 +712,31 @@ guard_json:
     sub rax,rbx
 .done:
     pop rbx
+    ret
+
+guard_required:
+    cmp qword [mode],1
+    jne .missing
+    xor eax,eax
+    ret
+.missing:
+    mov rax,-428
+    ret
+
+guard_restore_floor:
+    mov rax,9223372036854775807
+    cmp rdi,rax
+    jae .full
+    cmp [revision],rax
+    jae .full
+    cmp rdi,[revision]
+    jbe .keep
+    mov [revision],rdi
+.keep:
+    mov qword [receipt_count],0
+    mov qword [pending],0
+    xor eax,eax
+    ret
+.full:
+    mov rax,-507
     ret

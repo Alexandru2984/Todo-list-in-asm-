@@ -568,3 +568,68 @@ test('conflict drafts meet automated WCAG checks in both themes and preserve tex
     expect(result.violations).toEqual([]);
   }
 });
+
+test('recovery keys rotate, revoke another browser and restore the same workspace without JavaScript', async ({ browser, page }, info) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const otherContext = await browser.newContext({ javaScriptEnabled: false, viewport: page.viewportSize() });
+  const native = await context.newPage(); const other = await otherContext.newPage();
+  try {
+    await native.goto(base); await native.getByRole('button', { name: 'Find your focus' }).click();
+    await add(native, 'Key rotation fixture');
+    const old = (await context.cookies()).find(cookie => cookie.name === 'asm_uid').value;
+    await other.goto(base);
+    await other.getByText('Can I restore an existing workspace?', { exact: true }).click();
+    await other.getByLabel('Paste your recovery key (32 or 64 characters)', { exact: true }).fill(old);
+    await other.getByRole('button', { name: 'Restore workspace', exact: true }).click();
+    await expect(other.locator('.task-title')).toHaveText('Key rotation fixture');
+    await native.locator('#workspace-tools > summary').click();
+    await native.getByRole('link', { name: 'Rotate recovery key', exact: true }).click();
+    const candidate = await native.getByRole('textbox', { name: 'New recovery key', exact: true }).inputValue();
+    expect(candidate).toMatch(/^[a-f0-9]{64}$/); expect(candidate.slice(0,32)).toBe(old);
+    for (const width of [320,390,768,1440]) {
+      await native.setViewportSize({ width, height: 1000 });
+      expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
+    const downloadEvent = native.waitForEvent('download');
+    await native.getByRole('button', { name: 'Save new key', exact: true }).click();
+    const download = await downloadEvent;
+    expect((await fs.readFile(await download.path(), 'utf8')).trim()).toBe(candidate);
+    await native.locator('input[name=saved]').check();
+    await native.getByRole('button', { name: 'Rotate and revoke old key', exact: true }).click();
+    await expect(native).toHaveURL(base+'/app');
+    await expect(native.locator('.task-title')).toHaveText('Key rotation fixture');
+    expect((await context.cookies()).find(cookie => cookie.name === 'asm_uid').value).toBe(candidate);
+    expect(await native.content()).not.toContain(candidate);
+    await other.reload();
+    await expect(other.getByRole('heading', { name: 'This key is no longer active', exact: true })).toBeVisible();
+    await other.getByRole('button', { name: 'Forget inactive key', exact: true }).click();
+    await other.getByText('Can I restore an existing workspace?', { exact: true }).click();
+    await other.getByLabel('Paste your recovery key (32 or 64 characters)', { exact: true }).fill(candidate);
+    await other.getByRole('button', { name: 'Restore workspace', exact: true }).click();
+    await expect(other.locator('.task-title')).toHaveText('Key rotation fixture');
+    await native.setViewportSize(page.viewportSize());
+    await native.screenshot({ path: info.outputPath('rotated-workspace.png'), fullPage: true });
+  } finally { await context.close(); await otherContext.close(); }
+});
+
+test('rotation confirmation and revoked-key recovery meet WCAG checks in both themes', async ({ page }) => {
+  await open(page); await add(page, 'Rotation accessibility fixture');
+  const old = (await page.context().cookies()).find(cookie => cookie.name === 'asm_uid').value;
+  await page.locator('#workspace-tools > summary').click();
+  await page.getByRole('link', { name: 'Rotate recovery key', exact: true }).click();
+  for (const theme of ['light','dark']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme=theme; }, theme);
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  }
+  await page.locator('input[name=saved]').check();
+  await page.getByRole('button', { name: 'Rotate and revoke old key', exact: true }).click();
+  await page.goto(base);
+  await page.getByText('Can I restore an existing workspace?', { exact: true }).click();
+  await page.getByLabel('Paste your recovery key (32 or 64 characters)', { exact: true }).fill(old);
+  await page.getByRole('button', { name: 'Restore workspace', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'This key is no longer active', exact: true })).toBeVisible();
+  for (const theme of ['light','dark']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme=theme; }, theme);
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  }
+});

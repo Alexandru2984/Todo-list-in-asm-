@@ -3,6 +3,8 @@ Allow: /app.css
 Allow: /app.js
 Disallow: /app
 Disallow: /export
+Disallow: /rotate-key
+Disallow: /rotation-key
 Disallow: /recovery
 Disallow: /state.json
 Disallow: /stats.svg

@@ -4,7 +4,7 @@ DEFAULT ABS
 extern init_storage, parse_uint, validate_request, handle_request, send_error
 extern request_cap
 extern print, itoa
-extern strcmp, downgrade_storage, downgrade_v3, check_storage
+extern strcmp, downgrade_storage, downgrade_v3, downgrade_v4, preserve_key_policy, check_storage
 
 global _start
 section .data
@@ -15,7 +15,9 @@ section .data
     check_ok db 'ASM TODO: storage check passed',10,0
     check_bad db 'ASM TODO: storage check failed; no workspace was rewritten',10,0
     version_arg db '--storage-version',0
-    version_text db '4',10,0
+    version_text db '5',10,0
+    preserve_arg db '--preserve-key-policy',0
+    downgrade_v4_arg db '--downgrade-v4',0
     downgrade_v3_arg db '--downgrade-v3',0
     downgrade_arg db '--downgrade',0
     overload_delay dq 0,100000000
@@ -32,6 +34,8 @@ section .bss
     port_str resb 24
 section .text
 _start:
+    cmp qword [rsp],3
+    je .policy_args
     cmp qword [rsp], 1
     je .signals
     cmp qword [rsp], 2
@@ -46,6 +50,11 @@ _start:
     call strcmp
     test rax,rax
     jz .version
+    mov rdi, [rsp+16]
+    mov rsi,downgrade_v4_arg
+    call strcmp
+    test rax,rax
+    jz .downgrade_v4
     mov rdi, [rsp+16]
     mov rsi,downgrade_v3_arg
     call strcmp
@@ -233,6 +242,18 @@ _start:
     mov edi,1
     syscall
 
+.policy_args:
+    mov rdi,[rsp+16]
+    mov rsi,preserve_arg
+    call strcmp
+    test rax,rax
+    jnz .fatal
+    mov rdi,[rsp+24]
+    call preserve_key_policy
+    jmp .downgrade_result
+.downgrade_v4:
+    call downgrade_v4
+    jmp .downgrade_result
 .downgrade_v3:
     call downgrade_v3
     jmp .downgrade_result

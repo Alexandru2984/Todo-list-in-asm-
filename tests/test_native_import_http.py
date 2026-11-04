@@ -43,7 +43,13 @@ class NativeImportHTTPTests(unittest.TestCase):
         self.cookie=self.server.session();self.path=self.server.file(self.cookie)
 
     def post(self,path,fields,**kwargs):
-        return self.server.mutate(path,fields,cookie=self.cookie,**kwargs)
+        # The single import slot is held until child exit, briefly after sending
+        # a response. A rejected admission has not read/applied this operation.
+        for _ in range(30):
+            result=self.server.mutate(path,fields,cookie=self.cookie,**kwargs)
+            if result[0]!=503:return result
+            time.sleep(.01)
+        return result
 
     def export(self,cookie=None,path='/export.json'):
         status,_,body=self.server.request('GET',path,cookie=cookie or self.cookie)

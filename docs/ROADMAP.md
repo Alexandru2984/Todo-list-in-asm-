@@ -49,7 +49,14 @@ conflict recovery, private protocol discovery, metadata-preserving V3 rollback,
 read-only snapshot reads without persistent lock creation, bounded new-workspace
 admission and accept/fork error backoff. See the completed
 [reliability plan and review-driven next priorities](RELIABILITY-PLAN.md).
-Recovery-key rotation/revocation leads the remaining security work.
+
+## Release 6 — revocable native recovery keys
+
+Native V5 key rotation/revocation, pre-saved candidate confirmation, response-loss
+recovery and policy-preserving offline restore. Older-reader conversion refuses
+V5 before changing snapshots. The task backend and new key workflow remain NASM;
+all essential browser flows work without JavaScript. See [the delivery review](KEY-ROTATION-PLAN.md)
+and [storage/restore contract](STORAGE-V5.md). Deployment evidence is in RELEASE.md.
 
 ## Next — additional organization
 
@@ -61,7 +68,8 @@ Recovery-key rotation/revocation leads the remaining security work.
 
 ## Next — accounts and scale
 
-- Optional passkey accounts, recovery and multiple devices, session revocation.
+- Optional passkey accounts, account recovery and independent device sessions;
+  workspace-wide recovery-key revocation is already available.
 - Explicit sharing roles, expiring invitations and audit trail.
 - Global filesystem quota, off-host encrypted backups and additional restore drills.
   The dedicated Unix identity and local restore drills are already delivered.

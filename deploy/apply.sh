@@ -23,9 +23,9 @@ cp -a bin/server "$BACKUP_DIR/server"
 # response identifies a compatible planner rollback target; otherwise conversion is needed.
 PREVIOUS_STORAGE_VERSION=1
 PREVIOUS_STORAGE_VERSION=$(bin/server --storage-version 2>/dev/null || true)
-case "$PREVIOUS_STORAGE_VERSION" in 2|3|4) ;; *) PREVIOUS_STORAGE_VERSION=1;; esac
+case "$PREVIOUS_STORAGE_VERSION" in 2|3|4|5) ;; *) PREVIOUS_STORAGE_VERSION=1;; esac
 NEW_STORAGE_VERSION=$(build/server --storage-version)
-case "$NEW_STORAGE_VERSION" in 2|3|4) ;; *) echo 'Unsupported storage revision.' >&2; exit 1;; esac
+case "$NEW_STORAGE_VERSION" in 2|3|4|5) ;; *) echo 'Unsupported storage revision.' >&2; exit 1;; esac
 printf '%s\n' "$PREVIOUS_STORAGE_VERSION" > "$BACKUP_DIR/previous-storage-version"
 if [[ -f bin/backup ]]; then cp -a bin/backup "$BACKUP_DIR/backup"; fi
 cp -a /etc/systemd/system/asm-backup.service "$BACKUP_DIR/asm-backup.service"
@@ -54,7 +54,8 @@ rollback() {
                 exit "$exit_code"
             fi
             DOWNGRADE_ARG=--downgrade
-            if [[ $PREVIOUS_STORAGE_VERSION == 3 && $NEW_STORAGE_VERSION == 4 ]]; then DOWNGRADE_ARG=--downgrade-v3; fi
+            if [[ $PREVIOUS_STORAGE_VERSION == 3 ]]; then DOWNGRADE_ARG=--downgrade-v3; fi
+            if [[ $PREVIOUS_STORAGE_VERSION == 4 ]]; then DOWNGRADE_ARG=--downgrade-v4; fi
             if ! (cd /var/lib/asm-todo && runuser -u asm-todo -- "$REPO_DIR/bin/server" "$DOWNGRADE_ARG"); then
                 if ! mv /var/lib/asm-todo/data "$BACKUP_DIR/partial-downgrade-data" || ! cp -a "$BACKUP_DIR/failed-release-planner-data" /var/lib/asm-todo/data; then
                     echo "Cannot restore planner state. Service remains stopped; private recovery copy: $BACKUP_DIR/failed-release-planner-data" >&2

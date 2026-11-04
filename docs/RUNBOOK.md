@@ -95,9 +95,20 @@ archive rejection are also covered in the automated tests.
 
 Stop ASM, preserve the current data directory as another private snapshot, verify
 the selected backup, restore only verified `todos-*.txt` members (exclude `SHA256SUMS`) into a fresh
-0700 `/var/lib/asm-todo/data`, set owner `asm-todo:asm-todo` and file mode 0600,
-then start ASM and probe health/a fresh test workspace. Preserve the displaced
-data for investigation. A restore rolls back user changes after the snapshot.
+0700 `/var/lib/asm-todo/data`, set owner `asm-todo:asm-todo` and file mode 0600.
+Keep the service **and backup job/timer stopped**. Before restarting, run the V5
+binary from `/var/lib/asm-todo` with `--preserve-key-policy /private/current-copy/data`,
+using the retained trusted current data copy, then `--check-storage`. Both commands
+must succeed. The merge requires matching source files, keeps the highest key
+epoch, refuses conflicting equal epochs and resets restored V5 request receipts.
+It preserves the selected older tasks; it does not reconstruct tasks created
+after the archive. Preserve those separately and retain all displaced data for
+investigation. See [the full restore contract](STORAGE-V5.md).
+
+Then start ASM, resume the backup timer and probe health/a fresh test workspace.
+A restore rolls back user changes after the snapshot. If all newer policy copies
+are lost, later key revocations cannot be reconstructed from an old archive.
+Never silently restore historical authorization policy and claim keys stay revoked.
 Do not run extraction against unverified third-party archives.
 
 ## Rollback
@@ -119,8 +130,11 @@ snapshot merely because code is rolled back. Always probe the resulting service.
 
 If keys/tasks may be exposed: restrict this vhost at the proxy, preserve private
 logs/state/backups, record timestamps and affected workspace counts, and investigate
-the service identity and filesystem. There is no per-session revocation endpoint;
-capability rekeying requires a reviewed migration and affected-user recovery plan.
+the service identity and filesystem. A workspace owner can use **Rotate recovery
+key**, save its candidate and confirm, invalidating every older key/session for
+that workspace. An attacker holding the current key can race this same action;
+there is no independent account identity or lost-secret recovery. Preserve newer
+key policy when restoring task backups; do not rotate real users as a test.
 If data is corrupt, do not delete or overwrite it to clear a 500. Investigate and
 restore a verified copy. If storage returns 507, check disk, inodes, permissions
 and temporary-file paths; reload before retrying an ambiguous write.
@@ -141,7 +155,8 @@ With the service stopped, validate all workspace files without rewriting them:
 sudo -u asm-todo sh -c 'cd /var/lib/asm-todo && /srv/canary/asm.micutu.com/app/bin/server --check-storage'
 ```
 
-Protected snapshots are revision 4; V1/V2/V3 remain readable. Never copy a previous binary over live planner
+Rotated snapshots are revision 5; unrotated protected writes remain V4 and
+V1/V2/V3 remain readable. Never copy a previous binary over live planner
 state without comparing --storage-version. The deployment script preserves a
 complete private recovery copy and uses the new native --downgrade converter
 before an older reader starts. Conversion retains V1 live fields; metadata,
@@ -152,6 +167,10 @@ V4 rollback to reader 3 uses --downgrade-v3 after the same offline preflight/pri
 copy. It preserves metadata/history/metrics while dropping request receipts.
 Older readers use the conservative V1 conversion. Never reuse stale browser
 forms after rollback/restore; reload and preserve a draft before retrying.
+
+Any V5 workspace blocks **all** older-reader conversions before any snapshot
+rewrite, including `--downgrade-v4`. Use a compatible V5 release or forward fix.
+Never remove `#key`/`#keyepoch` to force rollback: this would revive revoked keys.
 
 ## Admission capacity and listener pressure
 

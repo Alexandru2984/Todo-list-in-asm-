@@ -2,9 +2,12 @@
 
 Each workspace is an anonymous bearer capability with 128 random bits generated
 by Linux getrandom. The browser receives it only in an HttpOnly, Secure,
-SameSite=Strict cookie. Normal task URLs and HTML omit the key. Possession of a
-legacy or recovery key still grants full access: this is not password/passkey
-authentication, and there is no key revocation or account recovery yet.
+SameSite=Strict cookie. Normal task URLs and HTML omit the key. Rotated keys use
+the stable 128-bit ID plus a fresh 128-bit secret. Native rotation atomically
+revokes older keys while preserving tasks; save the candidate before confirming
+so a lost response can be recovered. Possession of the active key grants full
+access: this is not password/passkey authentication and there is no account
+recovery. See [the V5 rotation/restore contract](STORAGE-V5.md).
 
 POST requests require exact URL-encoded fields, reject duplicate fields, check
 Origin against Host and reject cross-site/sibling-site Fetch Metadata. Browsers
@@ -97,3 +100,9 @@ This is a private attachment, not a public capability URL or calendar feed.
 Private HTML forms now carry bounded workspace preconditions/operation IDs.
 V4 mutations require both fields; stale/different-body key reuse returns 412,
 missing fields return 428, and exact recent replays do not write again.
+
+V5 embeds the current credential hash and key epoch in that same snapshot.
+Policy is revalidated under the writer lock before receipt handling; undo/import
+cannot roll it back. Revoked keys fail private routes and large-import header
+admission with 410. An older archive can revive a key unless the documented
+offline merge preserves newer policy. Older-reader conversion refuses V5.

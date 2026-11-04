@@ -1,12 +1,14 @@
 %include "src/defs.inc"
 DEFAULT ABS
 extern current_uid, load_todos, lock_user_file, unlock_user_file
-extern storage_version, save_legacy_snapshot, save_v3_snapshot
+extern storage_version, save_legacy_snapshot, save_v3_snapshot, save_snapshot
+extern auth_merge_policy
 
-global downgrade_storage, downgrade_v3, check_storage
+global downgrade_storage, downgrade_v3, downgrade_v4, preserve_key_policy, check_storage
 section .data
     directory db 'data',0
     write_mode dq 0
+    policy_source_fd dq -1
 section .bss
     entries resb 32768
 section .text
@@ -21,6 +23,43 @@ downgrade_storage:
     jmp maintenance_run
 downgrade_v3:
     mov edi,2
+    jmp maintenance_run
+downgrade_v4:
+    mov edi,3
+    jmp maintenance_run
+preserve_key_policy:
+    push rbx
+    mov eax,SYS_OPEN
+    mov esi,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC
+    xor edx,edx
+    syscall
+    test rax,rax
+    js .failed
+    mov rbx,rax
+    mov [policy_source_fd],rax
+    mov eax,SYS_FLOCK
+    mov rdi,rbx
+    mov esi,LOCK_EX|4
+    syscall
+    test rax,rax
+    js .close_failed
+    mov edi,4
+    call maintenance_run
+    push rax
+    mov eax,SYS_CLOSE
+    mov rdi,rbx
+    syscall
+    pop rax
+    pop rbx
+    ret
+.close_failed:
+    mov eax,SYS_CLOSE
+    mov rdi,rbx
+    syscall
+.failed:
+    mov rax,-1
+    pop rbx
+    ret
 maintenance_run:
     mov [write_mode],rdi
     push rbx
@@ -82,8 +121,16 @@ maintenance_run:
     call load_todos
     test rax,rax
     js .unlock_bad
+    cmp qword [write_mode],4
+    je .merge_policy
+    cmp qword [write_mode],0
+    je .unlock
+    cmp qword [storage_version],5
+    jae .unlock_bad ; no older reader may silently revive revoked credentials
     test r13,r13
     jz .unlock
+    cmp qword [write_mode],3
+    je .unlock ; V1..V4 are already readable by a V4 rollback target
     cmp qword [write_mode],2
     jne .legacy
     cmp qword [storage_version],4
@@ -94,6 +141,16 @@ maintenance_run:
     cmp qword [storage_version],2
     jb .unlock
     call save_legacy_snapshot
+    jmp .saved
+.merge_policy:
+    mov rdi,[policy_source_fd]
+    call auth_merge_policy
+    test rax,rax
+    js .unlock_bad
+    jz .unlock
+    test r13,r13
+    jz .unlock
+    call save_snapshot
 .saved:
     test rax,rax
     js .unlock_bad
