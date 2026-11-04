@@ -43,6 +43,8 @@ and a responsive HTML/CSS/JavaScript interface. No libc or web runtime framework
   sitemap. Private workspace responses send `noindex` and never enter the sitemap.
 - Anonymous 128-bit sessions generated on the server, in HttpOnly Secure
   SameSite cookies. Legacy URLs/localStorage keys migrate to the new session.
+- Native admission bounds new workspace reservations; reads create no per-list
+  lock inode, and accept/fork resource failures use bounded retry backoff.
 - Strict bounded HTTP parser, complete-write handling, per-list locks, atomic
   synced snapshots, capacity checks and explicit storage errors.
 

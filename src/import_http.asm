@@ -24,6 +24,7 @@ section .data
     replace db 'replace',0
     modes dq merge,replace
     preview_head db '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light dark"><title>Review import — ASM TODO</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head><body data-page="import"><main class="native-import"><a href="/app#import-panel">Back to workspace</a><h1>Review your import</h1>',0
+    unavailable_summary db '</strong> trash entries. The workspace could not be loaded. Your source is preserved; try again when storage is available. Nothing from this request was saved.</p><ol class="import-preview-list">',0
     capacity_notice db '<p class="notice" role="alert">This workspace cannot fit the import or has exhausted its task IDs. Adjust the file or workspace, then preview again. Your payload is preserved below.</p>',0
     stale_notice db '<p class="notice" role="alert">Workspace changed since this form was opened. This import was not applied. Check the current workspace, then review this preview before confirming again. Your payload is preserved below.</p>',0
     storage_notice db '<p class="notice" role="alert">Saving was not confirmed. Check your workspace before retrying: importing twice can create duplicates. Your payload is preserved below.</p>',0
@@ -47,6 +48,7 @@ section .data
 section .bss
     original resb IMPORT_MAX+9
     scratch resb IMPORT_MAX+9
+    workspace_loaded resq 1
     payload_length resq 1
     selected_format resq 1
     detected_format resq 1
@@ -352,6 +354,7 @@ handle_import:
     push r15
     mov r12,rdi
     mov r13,rsi
+    mov qword [workspace_loaded],0
     call parse_import_form
     test rax,rax
     js .done
@@ -373,7 +376,8 @@ handle_import:
 .lock:
     call lock_user_file
     test rax,rax
-    js .done
+    js .unavailable
+    mov qword [workspace_loaded],1
     call load_todos
     test rax,rax
     js .unlock
@@ -392,6 +396,11 @@ handle_import:
     test r13,r13
     jz .preview
     call redirect_app
+    xor eax,eax
+    jmp .done
+.unavailable:
+    mov edi,503
+    call render_preview
     xor eax,eax
     jmp .done
 .preview:
@@ -471,12 +480,19 @@ render_preview:
     call copy_string
     mov rax,[import_trash]
     call emit_number
+    cmp qword [workspace_loaded],0
+    je .unknown_workspace
     mov rsi,summary_end
     call copy_string
     mov rax,[todo_count]
     call emit_number
     mov rsi,summary_current
     call copy_string
+    jmp .items
+.unknown_workspace:
+    mov rsi,unavailable_summary
+    call copy_string
+.items:
     mov rbx,import_tasks
     mov r14,[import_count]
     cmp r14,20

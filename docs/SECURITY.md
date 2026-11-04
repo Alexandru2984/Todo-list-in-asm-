@@ -22,11 +22,13 @@ at 4k. Duplicate fields, controls, malformed percent escapes and decoded NUL fai
 The response buffer is capped at 8 MiB for escaped previews. A child has an
 absolute 15-second lifetime plus socket timeouts. Deployment MUST impose a
 process/memory cap and request rate limit; the application does not implement a
-worker pool or a global on-disk quota.
+worker pool. Native admission now bounds protocol-managed workspace identities;
+a filesystem/user quota remains an operator control (see ADMISSION.md).
 
 Storage supports 1000 live tasks, 200 retained trash items, one bounded undo state
 and 110 UTF-8 bytes per title. Files and native archive members cap at 2 MiB.
-Records are replayed under a per-workspace lock; writes create a full snapshot,
+Mutations replay records under a per-workspace lock; GET/HEAD/preview pin
+immutable snapshot descriptors without allocating persistent locks. Writes create a full snapshot,
 check complete writes/fsync/close, rename atomically and sync the data directory.
 Corrupt, oversized or unreadable files return an error and are preserved.
 The `#next=N` snapshot header preserves monotonically increasing IDs. Legacy
@@ -52,8 +54,9 @@ printing their contents/keys, before deployment changes the binary.
 No-follow opens resist symlink redirection. Regular-inode and link-count checks
 precede reads/truncation; nonblocking opens also reject FIFO traps. The storage directory must remain
 private. Production runs under the dedicated `asm-todo` Unix identity, with private state,
-a syscall allowlist, loopback-only networking and process/memory caps. A global
-filesystem quota is still required to bound total anonymous workspace growth. Assembly code has fixed buffers and no memory-safe runtime;
+a syscall allowlist, loopback-only networking and process/memory caps. Native
+admission limits new reservations to 1,024 identities. An operator filesystem
+quota/budget is still needed for compromised-identity writes and retained archives. Assembly code has fixed buffers and no memory-safe runtime;
 tests reduce risk but cannot establish the absence of memory corruption. The
 static binary is not position-independent; the non-executable stack and syscall
 sandbox do not replace memory-safety guarantees.

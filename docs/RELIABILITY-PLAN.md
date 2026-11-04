@@ -13,7 +13,7 @@ Every completed stage receives a separate owner-attributed commit.
   draft-preserving conflict pages. GET leaves V1/V2/V3 files unchanged.
 - [x] Compatibility: native V4 validation, verified archive/receipt restoration,
   full preflight, V4-to-V3 downgrade preserving metadata/history, and V1 fallback.
-- [ ] Abuse/overload: remove persistent read-only lock creation, enforce bounded
+- [x] Abuse/overload: remove persistent read-only lock creation, enforce bounded
   admission for new workspaces, keep stable write locks, and back off on accept/
   fork resource failures. Do not expire/delete user workspaces automatically.
 - [ ] Release: full native/browser/no-JavaScript/axe checks, actual green CI,
@@ -77,3 +77,18 @@ reply/restart, concurrent writers, bounded receipts, maximal escaped HTML,
 revision exhaustion, native backup restore and both downgrade targets. Six new
 browser cases passed across desktop/mobile, without JavaScript and with light/
 dark axe checks. Final full counts and production evidence follow at release.
+
+Abuse/overload stage: six admission cases and two real resource-limit fault cases
+passed; full local integration count is now 177 and the complete browser suite
+passed 44 cases. GET/HEAD/preview no longer allocate per-workspace lock inodes.
+New write admission reserves at most 1,024 identities without expiring user data.
+The exact service sandbox and native archive restore passed, and the actual
+previous production V3 binary read converted V4 fixtures with metadata intact.
+
+Proxy verification: existing trusted Cloudflare/loopback configuration matches
+the published [IPv4](https://www.cloudflare.com/ips-v4/) and
+[IPv6](https://www.cloudflare.com/ips-v6/) ranges. A fresh public unauthenticated
+probe matched nginx's logged source against the Cloudflare trace source; a
+separate spoofed CF-Connecting-IP request received 403. No IP addresses/task data
+were recorded here and no shared VPS proxy configuration was changed. This is a
+concrete path check, not a claim that external alert delivery is configured.

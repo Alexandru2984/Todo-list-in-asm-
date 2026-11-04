@@ -18,6 +18,7 @@ section .data
     version_text db '4',10,0
     downgrade_v3_arg db '--downgrade-v3',0
     downgrade_arg db '--downgrade',0
+    overload_delay dq 0,100000000
     downgrade_ok db 'ASM TODO: offline downgrade completed',10,0
     downgrade_bad db 'ASM TODO: offline downgrade failed; retain the compatible planner binary and restore the private copy',10,0
     sockaddr: dw AF_INET,0
@@ -130,15 +131,33 @@ _start:
     xor edx,edx
     syscall
     test rax,rax
-    js .accept
+    js .accept_error
     mov [client_fd],rax
     mov eax,SYS_FORK
     syscall
     test rax,rax
     jz .child
+    js .fork_error
     mov eax,SYS_CLOSE
     mov rdi,[client_fd]
     syscall
+    jmp .accept
+.accept_error:
+    cmp rax,-4 ; EINTR has no resource pressure
+    je .accept
+    cmp rax,-9 ; invalid listening descriptor/type/state cannot recover in a loop
+    je .fatal
+    cmp rax,-22
+    je .fatal
+    cmp rax,-88
+    je .fatal
+    call main_backoff
+    jmp .accept
+.fork_error:
+    mov eax,SYS_CLOSE
+    mov rdi,[client_fd]
+    syscall
+    call main_backoff
     jmp .accept
 .child:
     mov eax,SYS_CLOSE
@@ -256,3 +275,11 @@ _start:
     mov eax,SYS_EXIT
     mov edi,1
     syscall
+
+; Bound retry CPU under EMFILE/ENFILE/ENOMEM/EAGAIN. No worker-pool claim.
+main_backoff:
+    mov eax,35 ; nanosleep
+    mov rdi,overload_delay
+    xor esi,esi
+    syscall
+    ret

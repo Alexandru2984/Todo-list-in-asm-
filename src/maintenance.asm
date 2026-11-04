@@ -52,7 +52,7 @@ maintenance_run:
     test rax,rax
     js .close_bad
 .read:
-    mov eax,217 ; getdents64, unavailable inside the HTTP service sandbox
+    mov eax,217 ; getdents64; offline maintenance also needs lseek
     mov rdi,r12
     mov rsi,entries
     mov edx,32768

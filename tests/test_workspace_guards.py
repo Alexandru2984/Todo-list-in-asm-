@@ -138,10 +138,16 @@ class WorkspaceGuardTests(unittest.TestCase):
         fields=Preview(body).fields
         self.assertEqual(self.fresh('/add',dict(title='Other tab'))[0],303)
         status,_,body=self.post('/import',fields);self.assertEqual(status,412)
-        self.assertIn(b'Workspace changed',body);review=Preview(body);self.assertEqual(review.fields['payload'],payload)
+        self.assertIn(b'Workspace changed',body);self.assertIn(b'Workspace loaded for this preview',body);review=Preview(body);self.assertEqual(review.fields['payload'],payload)
         self.assertEqual(len(self.tasks()),1)
         self.assertEqual(self.post('/import',review.fields)[0],303);before=self.path.read_bytes()
-        self.assertEqual(self.post('/import',review.fields)[0],303);self.assertEqual(self.path.read_bytes(),before)
+        # The first import worker retains the global large-body slot until exit;
+        # a retry may arrive after its response but before that descriptor closes.
+        for _ in range(30):
+            status=self.post('/import',review.fields)[0]
+            if status!=503:break
+            time.sleep(.01)
+        self.assertEqual(status,303);self.assertEqual(self.path.read_bytes(),before)
         self.assertEqual([task['title'] for task in self.tasks()],['Other tab','Imported'])
 
     def test_guards_are_strict_and_still_require_cookie_and_origin(self):

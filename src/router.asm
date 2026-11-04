@@ -1604,6 +1604,8 @@ handle_request:
     jz .plain_error
     cmp rax,-507
     je .draft
+    cmp rax,-503
+    je .draft
     cmp rax,-409
     je .draft
     cmp rax,-412
@@ -1645,6 +1647,9 @@ handle_request:
     mov rdx,rdi
     sub rdx,res_buf
     pop rax
+    mov rcx,status_503
+    cmp rax,-503
+    je .draft_send
     mov rcx,status_412
     cmp rax,-412
     je .draft_send
@@ -1977,6 +1982,8 @@ authorize_import_headers:
 
 ; fd/body/length plus numeric 200/409/507 status for a bounded native preview.
 send_private_html:
+    cmp rcx,503
+    je .unavailable
     cmp rcx,412
     je .stale
     cmp rcx,409
@@ -1993,6 +2000,9 @@ send_private_html:
     jmp .send
 .storage:
     mov rcx,status_507
+    jmp .send
+.unavailable:
+    mov rcx,status_503
 .send:
     mov r8,mime_html
     mov r9,private_headers

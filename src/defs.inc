@@ -105,3 +105,6 @@
 %define PROJECT_MAX   32
 %define TAGS_MAX      64
 %define DEP_MAX       8
+
+; Reserved workspace identities across data/lock/tmp files. No automatic expiry.
+%define WORKSPACE_MAX 1024

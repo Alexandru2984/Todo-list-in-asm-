@@ -9,6 +9,7 @@ extern history_prepare, history_complete
 extern task_ready
 extern guard_storage_reset, guard_hash_state, guard_parse, guard_validate, guard_check
 extern guard_presave, guard_write
+extern request_method, request_path, strcmp, admission_open
 
 global check_regular
 global next_id
@@ -19,6 +20,7 @@ global init_storage, load_todos, append_todo, complete_todo, delete_todo
  global edit_todo, get_todo_list, get_todo_count, clear_done_todos
  global lock_user_file, unlock_user_file, reopen_todo
 section .data
+    preview_path db '/import-preview',0
     data_dir db 'data',0
     prefix db 'data/todos-',0
     seq_prefix db '#next=',0
@@ -80,8 +82,21 @@ build_path:
     ret
 
 lock_user_file:
-    call build_path
     mov qword [lock_fd],-1
+    ; Immutable snapshots are pinned by open fd: GET/HEAD need no persistent lock.
+    cmp qword [request_method],1
+    je .ok
+    cmp qword [request_method],3
+    je .ok
+    cmp qword [request_method],2
+    jne .writer
+    mov rdi,request_path
+    mov rsi,preview_path
+    call strcmp
+    test rax,rax
+    jz .ok
+.writer:
+    call build_path
     mov rsi,todo_path
     mov rdi,lock_path
     mov ecx,47
@@ -90,12 +105,21 @@ lock_user_file:
     mov word [rdi+4],'k'
     mov eax,SYS_OPEN
     mov rdi,lock_path
-    mov esi,O_CREAT|O_RDWR|O_NOFOLLOW|O_CLOEXEC
-    mov edx,0600o
+    mov esi,O_RDWR|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK
+    xor edx,edx
     syscall
+    cmp rax,-2
+    jne .opened
+    mov rdi,lock_path
+    call admission_open
+.opened:
     test rax,rax
     js .bad
     mov [lock_fd],rax
+    mov rdi,rax
+    call check_regular
+    test rax,rax
+    js .close_bad
 .retry:
     mov rdi,[lock_fd]
     mov eax,SYS_FLOCK
@@ -105,6 +129,7 @@ lock_user_file:
     je .retry
     test rax,rax
     js .close_bad
+.ok:
     xor eax,eax
     ret
 .close_bad:

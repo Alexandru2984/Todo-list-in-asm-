@@ -94,6 +94,7 @@ to_hex:
 
 ; Hash exact raw body and raw route before destructive form parsing/aliases.
 guard_begin:
+    mov qword [state_ready],0
     mov qword [field_flags],0
     mov qword [mode],0
     mov qword [pending],0

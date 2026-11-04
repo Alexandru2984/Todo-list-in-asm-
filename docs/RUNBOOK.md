@@ -152,3 +152,19 @@ V4 rollback to reader 3 uses --downgrade-v3 after the same offline preflight/pri
 copy. It preserves metadata/history/metrics while dropping request receipts.
 Older readers use the conservative V1 conversion. Never reuse stale browser
 forms after rollback/restore; reload and preserve a draft before retrying.
+
+## Admission capacity and listener pressure
+
+New workspace write attempts reserve one of 1,024 identities across exact data/
+lock/tmp names. Existing workspaces continue at capacity. GET/HEAD/import preview
+create no per-workspace lock file. See ADMISSION.md for bounds and exceptions.
+A 503 may mean admission contention/capacity as well as storage trouble; native
+forms retain validated drafts. Do not remove stable lock/gate files while the
+service is running. Stop ASM, preserve a private complete copy and investigate
+orphan reservations before any deliberate cleanup; no automatic expiry exists.
+
+The listener backs off 100 ms after recoverable accept/fork failures. Track
+process/FD/memory pressure and connection errors before changing limits. Only
+getdents64/nanosleep were added to the service syscall list for this stage.
+Protocol-managed live state, daily archives and release snapshots need separate
+budgeting; the admission limit does not configure an OS filesystem quota.
