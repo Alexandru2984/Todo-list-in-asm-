@@ -59,7 +59,7 @@ privately before clearing cookies. Exports of tasks do not contain the key.
 Linux x86_64, NASM, binutils/ld and make are required.
 
 ```sh
-make                 # build/server + build/backup; never overwrites the production binary
+make                 # build/server, build/backup, build/offsite; keeps production binaries intact
 make run             # local data/ and 127.0.0.1:34624
 ./build/server 8080   # choose a port; conflicts fail instead of scanning
 ```
@@ -108,7 +108,13 @@ fsync. Private native archives have 14-day retention. No Python, Node, shell,
 ./build/backup --verify /path/to/private-backups/asm-todo-EPOCH-RANDOM.tar
 ```
 
-Python remains for development checks and old `.tar.gz` archive compatibility;
+Optional [encrypted off-host replication](docs/OFFSITE.md) uses a second NASM
+executable for verified staging, direct rclone invocation, byte-for-byte readback
+and native archive checks. It reuses the existing crypt remote with isolated
+credentials and a dedicated transport identity. Remote retention and independent
+secret escrow require deliberate operator management.
+
+Python remains for deployment/development checks and old `.tar.gz` compatibility;
 Playwright remains a development-only browser test tool. See [project rules](AGENTS.md).
 
 ## Architecture
@@ -127,6 +133,7 @@ Playwright remains a development-only browser test tool. See [project rules](AGE
 | `src/session.asm`, `access.asm`, `rotation.asm` | Credentials, V5 policy, native key rotation/download |
 | `src/maintenance.asm` | Storage preflight, safe downgrade and retained-policy restore |
 | `native/backup.asm` | Native TAR snapshots, verification, atomic publication and retention |
+| `native/offsite.asm` | Native off-host admission, staging, readback comparison and health |
 | `native/sha256.asm` | Native SHA-256 integrity implementation |
 | `src/storage.asm` | Per-workspace locking, legacy replay and durable full snapshots |
 | `src/utils.asm` | Complete writes, strict decimal parsing, UTF-8 validation and strings |

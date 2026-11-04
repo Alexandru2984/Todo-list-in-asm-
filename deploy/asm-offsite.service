@@ -1,0 +1,46 @@
+[Unit]
+Description=Native verified encrypted off-host backup of ASM TODO
+Wants=network-online.target
+After=network-online.target asm-backup.service
+StartLimitIntervalSec=2h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=asm-offsite
+Group=asm-offsite
+StateDirectory=asm-offsite
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/asm-offsite
+ExecStartPre=+/srv/canary/asm.micutu.com/app/bin/offsite --stage /var/backups/asm-todo /var/lib/asm-offsite
+ExecStart=/srv/canary/asm.micutu.com/app/bin/offsite --ship /var/lib/asm-offsite /var/lib/asm-offsite/rclone.conf gdrive-vps-crypt:asm-todo /usr/bin/rclone
+TimeoutStartSec=45min
+Restart=on-failure
+RestartSec=15min
+UMask=0077
+LimitCORE=0
+LimitNOFILE=128
+Nice=10
+MemoryMax=256M
+TasksMax=32
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/var/backups/asm-todo
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+

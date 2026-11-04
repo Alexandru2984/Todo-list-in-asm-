@@ -162,9 +162,10 @@ See [the import contract](IMPORT.md) and [security model](SECURITY.md).
 Anonymous bearer keys are not accounts. Rotation revokes every older key for one
 workspace; there is no independent device-session management or account recovery.
 Native admission bounds protocol-managed reservations to 1,024 workspaces; no
-OS filesystem/user quota or automatic expiry is configured. Off-host
-encrypted backups and external alert delivery remain operator configuration;
-local archives do not protect against VPS loss. Purge does not erase retained
+OS filesystem/user quota or automatic expiry is configured. The optional
+[encrypted off-host pipeline](OFFSITE.md) now implements verified replication;
+independent secret escrow, remote retention and external alert delivery remain
+operator responsibilities. Local archives alone do not protect against VPS loss. Purge does not erase retained
 archives or operator-managed release/recovery snapshots.
 
 Protected V4 requests have a bounded 16-receipt retry window, committed with task

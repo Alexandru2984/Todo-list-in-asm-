@@ -22,7 +22,7 @@ class NativeImportCoreTests(unittest.TestCase):
         cls.addClassCleanup(cls.build.cleanup)
         obj=Path(cls.build.name)/'harness.o';cls.binary=Path(cls.build.name)/'harness'
         subprocess.run(['nasm','-f','elf64','-w+error','tests/import_harness.asm','-o',str(obj)],cwd=ROOT,check=True,capture_output=True)
-        objects=[str(path) for path in sorted((ROOT/'build').glob('*.o')) if path.name not in ['main.o','backup-native.o']]
+        objects=[str(path) for path in sorted((ROOT/'build').glob('*.o')) if path.name not in ['main.o','backup-native.o','offsite-native.o']]
         subprocess.run(['ld','-z','noexecstack','-z','separate-code','-o',str(cls.binary),str(obj),*objects],check=True,capture_output=True)
 
     def setUp(self):

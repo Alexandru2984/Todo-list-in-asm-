@@ -136,5 +136,9 @@ install -m 0644 deploy/asm-backup.service /etc/systemd/system/asm-backup.service
 install -m 0644 deploy/asm-backup.timer /etc/systemd/system/asm-backup.timer
 systemctl daemon-reload
 systemctl enable --now asm-backup.timer
+if [[ -f /etc/systemd/system/asm-backup.service.d/offsite.conf && -f /etc/systemd/system/asm-offsite.service ]]; then
+    # The direct native archive above bypasses the backup unit's OnSuccess hook.
+    systemctl start --no-block asm-offsite.service
+fi
 SUCCESS=1
 printf 'ASM release deployed. Rollback snapshot: %s\n' "$BACKUP_DIR"

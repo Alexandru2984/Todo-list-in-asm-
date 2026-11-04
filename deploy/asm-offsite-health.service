@@ -1,0 +1,27 @@
+[Unit]
+Description=Check ASM off-host archive and verification freshness
+
+[Service]
+Type=oneshot
+User=asm-offsite
+Group=asm-offsite
+ExecStart=/srv/canary/asm.micutu.com/app/bin/offsite --status /var/lib/asm-offsite 93600
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=16M
+TasksMax=1
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+SystemCallFilter=read write open openat close fstat time prctl umask execve execveat exit exit_group
+SystemCallErrorNumber=EPERM
+

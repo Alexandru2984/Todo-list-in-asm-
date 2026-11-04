@@ -58,6 +58,13 @@ V5 before changing snapshots. The task backend and new key workflow remain NASM;
 all essential browser flows work without JavaScript. See [the delivery review](KEY-ROTATION-PLAN.md)
 and [storage/restore contract](STORAGE-V5.md). Deployment evidence is in RELEASE.md.
 
+## Release 7 — verified encrypted off-host replication
+
+Native latest-snapshot selection/staging, isolated rclone crypt credentials,
+unprivileged transport, downloaded byte/native validation, atomic success receipts
+and hourly freshness checks. Remote retention, independent secret escrow and
+external alert delivery remain operator work. See [the contract and acceptance](OFFSITE.md).
+
 ## Next — additional organization
 
 - Manual drag ordering with equivalent keyboard controls; the native board and
@@ -71,8 +78,8 @@ and [storage/restore contract](STORAGE-V5.md). Deployment evidence is in RELEASE
 - Optional passkey accounts, account recovery and independent device sessions;
   workspace-wide recovery-key revocation is already available.
 - Explicit sharing roles, expiring invitations and audit trail.
-- Global filesystem quota, off-host encrypted backups and additional restore drills.
-  The dedicated Unix identity and local restore drills are already delivered.
+- Global filesystem quota, independent backup-secret escrow, remote retention and
+  additional restore drills. Native off-host replication is implemented above.
 - Bounded worker model, benchmarked limits, resource telemetry and abuse controls.
 - Data retention/deletion controls, accessibility audit and privacy policy review.
 

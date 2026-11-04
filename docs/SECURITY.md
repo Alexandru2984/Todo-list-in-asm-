@@ -91,6 +91,13 @@ needed to read private ASM-owned state. Integrity hashes are not signatures or
 encryption. The utility verifies its own strict USTAR profile; legacy compressed
 archives use the retained compatibility verifier.
 
+Optional [off-host replication](OFFSITE.md) stages the latest validated archive
+for a separate Unix identity, uses the existing rclone crypt remote, downloads
+the object, compares every byte and verifies the archive natively before recording
+success. Its private configuration excludes unrelated remotes; provider scope is
+still inherited from the existing token. No remote delete/retention, secret escrow
+or external notification delivery is configured by this worker.
+
 Calendar downloads require the same workspace cookie as JSON/CSV and export no
 access key. Task data only enters escaped TEXT values; properties are fixed and
 lines are folded on UTF-8 character boundaries. Stable event UIDs use the existing

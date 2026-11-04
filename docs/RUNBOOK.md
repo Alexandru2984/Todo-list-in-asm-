@@ -9,6 +9,8 @@
   Existing Cloudflare routing remains managed outside this repository.
 - Nginx templates: `deploy/asm.nginx.conf`, `asm-proxy.conf`, `asm-limits.conf`.
 - Backup timer: `asm-backup.timer`, daily around 03:17 UTC, local 14-day retention.
+- Optional encrypted transport: asm-offsite.service after local backup success,
+  with native hourly asm-offsite-health.timer. See [setup/recovery](OFFSITE.md).
 - Native private snapshots: `/var/backups/asm-todo/asm-todo-EPOCH-RANDOM.tar`.
 - Backup executable: `/srv/canary/asm.micutu.com/app/bin/backup`, raw NASM + syscalls.
 - Older `.tar.gz` snapshots remain intact for compatibility.
@@ -82,8 +84,10 @@ links, prefixes, nonzero padding, truncation and trailing payloads. Archives are
 a new verified archive is published. Old `.tar.gz` archives are not deleted by
 the native utility; verify those with `sudo python3 tools/backup.py --verify FILE`
 and manage their finite retention deliberately. Local backups do not
-protect against VPS loss. Configure encrypted off-host copies and a separate
-retention policy before promising disaster recovery. Release snapshots are not
+protect against VPS loss. The optional [native/rclone integration](OFFSITE.md)
+replicates the latest verified snapshot into the existing crypt remote, downloads
+it and checks exact bytes/native integrity. It requires independent secret escrow
+and deliberate remote retention. Release snapshots are not
 automatically pruned; monitor their size and retain/delete deliberately.
 
 Restore drill: verify the archive, unpack it into an isolated private directory,
